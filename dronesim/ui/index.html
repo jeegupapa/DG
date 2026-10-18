@@ -180,6 +180,17 @@
           <button data-speed="10">10×</button><button data-speed="30">30×</button>
         </div>
         <label class="sw"><input id="follow3d" type="checkbox" checked><span>드론 추적</span><span class="sw-d"><i></i></span></label>
+        <label class="sw"><input id="cam3d" type="checkbox" checked><span>카메라</span><span class="sw-d"><i></i></span></label>
+        <label class="rngl" title="짐벌 피치 (-90° 수직 아래 ~ 0° 수평)"><span>짐벌</span><input id="gimbal3d" class="rng rng-s" type="range" min="-90" max="0" step="1" value="-30"><b id="gimbalVal">-30°</b></label>
+        <label class="rngl" title="카메라 줌 (시야각 78° ÷ 줌)"><span>줌</span><input id="zoom3d" class="rng rng-s" type="range" min="1" max="4" step="0.1" value="1"><b id="zoomVal">1.0×</b></label>
+      </div>
+      <!-- 드론 시점(짐벌 카메라) PiP: 위치는 부모 대비 비율로 localStorage 'ds.pip.cam' 에 저장 -->
+      <div id="pipCam" class="pip pip-md">
+        <div class="pip-h" id="pipCamHead">
+          <span class="pip-t">짐벌 카메라</span>
+          <span class="pip-hr"><button id="pipCamSize" title="크기 전환">⤢</button><button id="pipCamClose" title="닫기">×</button></span>
+        </div>
+        <div class="pip-b"><div id="camMap"></div><canvas id="camHud"></canvas></div>
       </div>
       <div id="empty3d" class="empty3d hidden">먼저 왼쪽에서 <b>&nbsp;시뮬레이션 실행&nbsp;</b>을 누르면 그 결과로 3D 비행을 재생합니다.</div>
     </div>

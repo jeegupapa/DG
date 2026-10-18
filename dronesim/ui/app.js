@@ -606,7 +606,7 @@
     $("btnView2d").classList.toggle("active", !on);
     $("btnView3d").classList.toggle("active", on);
     if (!on) {
-      if (flight) { flight.pause(); updatePlayBtn(); }
+      if (flight) { flight.pause(); flight.pauseCam(); updatePlayBtn(); }   // 2D 로 돌아가면 PiP 렌더도 멈춘다
       setTimeout(() => map.invalidateSize(), 50);
       return;
     }
@@ -626,9 +626,91 @@
       if (flight.result !== state.result) flight.load(state.result);
       flight.speed = currentSpeed();
       flight.setFollow($("follow3d").checked);
+      flight.gimbalPitch = Number($("gimbal3d").value);
+      flight.camZoom = Number($("zoom3d").value);
+      flight.resumeCam();
       flight.play();
       updatePlayBtn();
+      pipClamp();
+      // PiP 카메라 맵은 메인 맵이 준비된 뒤 만든다 (켜져 있을 때만)
+      if (!flight.cam && $("cam3d").checked) flight.initCam($("camMap"), $("camHud")).then(() => pipClamp()).catch(e => console.warn("cam:", e));
     }).catch(e => setStatus("3D 뷰 오류: " + e, true));
+  }
+
+  // ───── 짐벌 카메라 PiP: 크기 전환(⤢ 24/34/46 %), 켜고 끄기, 드래그 (핸드오프 PiP 규격)
+  const PIP_KEY = "ds.pip.cam", PIP_SIZES = ["sm", "md", "lg"];
+  function pipLoad() { try { return JSON.parse(localStorage.getItem(PIP_KEY) || "null") || {}; } catch (_) { return {}; } }
+  function pipSave(patch) { try { localStorage.setItem(PIP_KEY, JSON.stringify({ ...pipLoad(), ...patch })); } catch (_) { } }
+  function pipHost() { const el = $("pipCam"); return el.offsetParent || el.parentElement; }
+  /** 저장된 비율 위치를 적용하되, 현재 호스트 크기 밖이면 안으로 당긴다 (창 축소·크기 전환 대응) */
+  function pipClamp() {
+    const el = $("pipCam"), host = pipHost(), p = pipLoad();
+    if (!el || !host || !host.clientWidth || !host.clientHeight) return;
+    if (typeof p.x !== "number" || typeof p.y !== "number") {
+      // 저장된 위치가 없으면 CSS 기본 앵커(우하단 10px). 재생 컨트롤 바가 아래를 차지하므로 그 위로 올린다.
+      const bar = document.querySelector("#view3d .ctl3d");
+      el.style.left = el.style.top = ""; el.style.right = "";
+      el.style.bottom = bar && bar.offsetHeight ? (bar.offsetHeight + 18) + "px" : "";
+      return;
+    }
+    const maxX = Math.max(0, (host.clientWidth - el.offsetWidth) / host.clientWidth);
+    const maxY = Math.max(0, (host.clientHeight - el.offsetHeight) / host.clientHeight);
+    const q = { x: Math.min(Math.max(0, p.x), maxX), y: Math.min(Math.max(0, p.y), maxY) };
+    el.style.left = (q.x * 100) + "%"; el.style.top = (q.y * 100) + "%"; el.style.right = "auto"; el.style.bottom = "auto";
+    if (q.x !== p.x || q.y !== p.y) pipSave(q);
+  }
+  function pipSetSize(size) {
+    const el = $("pipCam");
+    PIP_SIZES.forEach(s => el.classList.toggle("pip-" + s, s === size));
+    pipSave({ size });
+    pipClamp();
+    if (flight) flight.resizeCam();
+  }
+  function pipSetOn(on) {
+    $("pipCam").classList.toggle("hidden", !on);
+    $("cam3d").checked = on;
+    pipSave({ on });
+    if (!flight) return;
+    if (on && !flight.cam && flight.map) flight.initCam($("camMap"), $("camHud")).then(() => pipClamp()).catch(e => console.warn("cam:", e));
+    flight.setCamOn(on);
+  }
+  function setupPip() {
+    const el = $("pipCam"), head = $("pipCamHead"), saved = pipLoad();
+    if (PIP_SIZES.includes(saved.size)) PIP_SIZES.forEach(s => el.classList.toggle("pip-" + s, s === saved.size));
+    if (saved.on === false) { el.classList.add("hidden"); $("cam3d").checked = false; }
+    $("pipCamSize").addEventListener("click", () => {
+      const cur = PIP_SIZES.find(s => el.classList.contains("pip-" + s)) || "sm";
+      pipSetSize(PIP_SIZES[(PIP_SIZES.indexOf(cur) + 1) % PIP_SIZES.length]);
+    });
+    $("pipCamClose").addEventListener("click", () => pipSetOn(false));
+    $("cam3d").addEventListener("change", () => pipSetOn($("cam3d").checked));
+    // 드래그: 헤더를 잡은 픽셀 델타로 움직이고 [0, host - pip] 로 클램프한 뒤 비율로 저장
+    let drag = null;
+    head.addEventListener("pointerdown", e => {
+      if (e.target.closest("button")) return;
+      const host = pipHost(); if (!host) return;
+      drag = { px: e.clientX, py: e.clientY, lx: el.offsetLeft, ly: el.offsetTop, hw: host.clientWidth, hh: host.clientHeight, w: el.offsetWidth, h: el.offsetHeight };
+      head.setPointerCapture(e.pointerId);
+    });
+    head.addEventListener("pointermove", e => {
+      if (!drag) return;
+      const nx = Math.max(0, Math.min(drag.hw - drag.w, drag.lx + (e.clientX - drag.px)));
+      const ny = Math.max(0, Math.min(drag.hh - drag.h, drag.ly + (e.clientY - drag.py)));
+      el.style.left = (nx / drag.hw * 100) + "%"; el.style.top = (ny / drag.hh * 100) + "%"; el.style.right = "auto"; el.style.bottom = "auto";
+      pipSave({ x: nx / drag.hw, y: ny / drag.hh });
+    });
+    const up = () => { drag = null; };
+    head.addEventListener("pointerup", up); head.addEventListener("pointercancel", up);
+    window.addEventListener("resize", () => { pipClamp(); if (flight) flight.resizeCam(); });
+    // 짐벌 피치·줌 슬라이더
+    $("gimbal3d").addEventListener("input", () => {
+      const v = Number($("gimbal3d").value); $("gimbalVal").textContent = `${v}°`;
+      if (flight) flight.setGimbalPitch(v);
+    });
+    $("zoom3d").addEventListener("input", () => {
+      const v = Number($("zoom3d").value); $("zoomVal").textContent = `${v.toFixed(1)}×`;
+      if (flight) flight.setCamZoom(v);
+    });
   }
 
   /** 재생 속도 세그먼트 컨트롤의 현재 값 */
@@ -674,6 +756,7 @@
       flight.pause(); updatePlayBtn();
       flight.seek(Number($("seek3d").value) / 1000 * flight.track.total);
     });
+    setupPip();
   }
 
   init().catch(e => setStatus("초기화 실패: " + e, true));

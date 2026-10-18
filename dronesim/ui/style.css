@@ -325,6 +325,40 @@ td.st-ok, td.st-info { font-family: var(--sans); }
 .empty3d { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 6; background: rgba(241, 243, 242, .9); color: var(--sub); font-size: 12px; text-align: center; padding: 20px; }
 .wp3d { background: rgba(255, 255, 255, .92); color: var(--ink); font-family: var(--mono); font-size: 9.5px; font-weight: 600; padding: 2px 6px; border-radius: 3px; border: 1px solid var(--line); box-shadow: 0 1px 2px rgba(27, 42, 56, .15); }
 .wp3d.home { color: var(--ok); border-color: rgba(29, 138, 95, .35); }
+
+/* ---------- 짐벌 카메라 PiP (핸드오프 PiP 규격) ---------- */
+.pip {
+  position: absolute; z-index: 5; background: var(--panel); border-radius: 6px;
+  /* 첫 로드 기본 위치 — 오른쪽 아래. 저장된 위치가 있으면 left/top 이 덮어쓴다. */
+  right: 10px; bottom: 10px;
+  box-shadow: 0 6px 22px rgba(27, 42, 56, .18), 0 0 0 1px rgba(27, 42, 56, .13);
+  overflow: hidden; display: flex; flex-direction: column;
+}
+.pip-md { width: 34%; }
+.pip-sm { width: 24%; }
+.pip-lg { width: 46%; }
+.pip-h {
+  display: flex; align-items: center; justify-content: space-between; gap: 6px;
+  padding: 3px 4px 3px 8px; background: var(--panel-2); border-bottom: 1px solid var(--line);
+  cursor: grab; touch-action: none; user-select: none;
+}
+.pip-h:active { cursor: grabbing; }
+.pip-t { font-size: 10px; font-weight: 700; }
+.pip-h button {
+  border: 0; background: transparent; color: var(--faint); font-size: 11px;
+  width: 18px; height: 18px; border-radius: 3px; line-height: 1; padding: 0;
+}
+.pip-h button:hover { background: var(--bg-2); color: var(--accent); }
+.pip-hr { display: flex; gap: 2px; }
+.pip-b { aspect-ratio: 16 / 9; position: relative; background: #c9d4da; }
+.pip-lg .pip-b { aspect-ratio: 16 / 10; }
+.pip-b #camMap { position: absolute; inset: 0; }
+.pip-b #camHud { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 2; }
+.pip-b .maplibregl-canvas { outline: none; }
+/* 컨트롤 바의 라벨 달린 짧은 슬라이더 (짐벌·줌) */
+.rngl { display: flex; flex-direction: row; align-items: center; gap: 5px; margin: 0; font-size: 10px; color: var(--sub); white-space: nowrap; }
+.rngl b { font-family: var(--mono); font-variant-numeric: tabular-nums; font-weight: 600; color: var(--ink); min-width: 34px; text-align: right; }
+.rng.rng-s { width: 72px; min-width: 72px; max-width: 72px; flex: 0 0 72px; }
 .maplibregl-ctrl-group { border: 1px solid var(--line) !important; box-shadow: var(--shadow) !important; border-radius: 5px !important; }
 .maplibregl-ctrl-attrib { font-size: 9px !important; color: var(--faint) !important; }
 
