@@ -6,6 +6,12 @@
       "runtimeExecutable": ".venv/Scripts/python.exe",
       "runtimeArgs": ["-m", "dronesim.devserver", "8765"],
       "port": 8765
+    },
+    {
+      "name": "design-handoff",
+      "runtimeExecutable": ".venv/Scripts/python.exe",
+      "runtimeArgs": ["-m", "http.server", "8766", "--bind", "127.0.0.1", "--directory", "docs/design_handoff_drone_flight_console (1)"],
+      "port": 8766
     }
   ]
 }

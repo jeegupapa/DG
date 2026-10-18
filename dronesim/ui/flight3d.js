@@ -9,7 +9,8 @@
   const TERRAIN_TILES = "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png";
   const OSM_TILES = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
   const OFM_TILEJSON = "https://tiles.openfreemap.org/planet";
-  const STATUS_COLOR = { ok: "#1f5fbf", warn: "#d98c0b", fail: "#d33f3f" };
+  const STATUS_COLOR = { ok: "#1f74d8", warn: "#b8791a", fail: "#c0392b" };   // 구간 판정 톤 (커튼)
+  const ACCENT = "#1f74d8", ACCENT_D = "#0f4c93", CRIT = "#c0392b";           // 드론·궤적은 강조색만
 
   // ─────────────────────── 지리 도우미
   const R = 6371008.8;
@@ -114,8 +115,8 @@
             },
             layers: [
               { id: "osm", type: "raster", source: "osm" },
-              { id: "track", type: "line", source: "track", paint: { "line-color": "#1f5fbf", "line-width": 3, "line-opacity": 0.8 } },
-              { id: "trail", type: "line", source: "trail", paint: { "line-color": "#ff7a00", "line-width": 4 } },
+              { id: "track", type: "line", source: "track", paint: { "line-color": ACCENT, "line-width": 2, "line-opacity": 0.5, "line-dasharray": [2, 2] } },
+              { id: "trail", type: "line", source: "trail", paint: { "line-color": ACCENT, "line-width": 3.5 } },
               { id: "curtain", type: "fill-extrusion", source: "curtain",
                 paint: { "fill-extrusion-color": ["get", "color"], "fill-extrusion-height": ["get", "h"], "fill-extrusion-base": ["get", "b"], "fill-extrusion-opacity": 0.32 } },
               { id: "shadow", type: "circle", source: "shadow", paint: { "circle-radius": 6, "circle-color": "#000", "circle-opacity": 0.35, "circle-blur": 0.6 } },
@@ -243,15 +244,15 @@
       const base = Math.max(0, st.alt + corr);
       const agl = localElev != null && homeElev != null ? st.alt + homeElev - localElev : st.alt;
       const danger = agl < 5 && st.seg.kind !== "takeoff" && st.seg.kind !== "land" && st.t > 0;
-      const color = danger ? "#d33f3f" : "#ff7a00";
+      const color = danger ? CRIT : ACCENT;
 
       const arms = [
         { type: "Feature", properties: { color, h: base + size * 0.25, b: base }, geometry: { type: "Polygon", coordinates: rect(st.lat, st.lon, st.heading + 45, size * 1.6, size * 0.28) } },
         { type: "Feature", properties: { color, h: base + size * 0.25, b: base }, geometry: { type: "Polygon", coordinates: rect(st.lat, st.lon, st.heading - 45, size * 1.6, size * 0.28) } },
-        { type: "Feature", properties: { color: "#2b2f36", h: base + size * 0.45, b: base }, geometry: { type: "Polygon", coordinates: rect(st.lat, st.lon, st.heading, size * 0.9, size * 0.45) } },
+        { type: "Feature", properties: { color: ACCENT_D, h: base + size * 0.45, b: base }, geometry: { type: "Polygon", coordinates: rect(st.lat, st.lon, st.heading, size * 0.9, size * 0.45) } },
         { type: "Feature", properties: { color: "#ffffff", h: base + size * 0.5, b: base + size * 0.45 }, geometry: { type: "Polygon", coordinates: rect(st.lat, st.lon, st.heading, size * 0.5, size * 0.3) } },
         // 고도 기둥 (드론 아래 지면까지)
-        { type: "Feature", properties: { color: "#ff7a00", h: base, b: 0 }, geometry: { type: "Polygon", coordinates: rect(st.lat, st.lon, 0, size * 0.12, size * 0.12) } },
+        { type: "Feature", properties: { color: ACCENT, h: base, b: 0 }, geometry: { type: "Polygon", coordinates: rect(st.lat, st.lon, 0, size * 0.12, size * 0.12) } },
       ];
       this._set("drone", arms);
       this._set("shadow", [{ type: "Feature", geometry: { type: "Point", coordinates: [st.lon, st.lat] } }]);

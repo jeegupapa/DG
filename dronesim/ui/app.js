@@ -25,6 +25,8 @@
     m: v => v >= 1000 ? (v / 1000).toFixed(2) + " km" : Math.round(v) + " m",
     s: v => { const m = Math.floor(v / 60), s = Math.round(v % 60); return m + "분 " + String(s).padStart(2, "0") + "초"; },
     pct: v => Math.round(v * 100) + "%",
+    mmss: v => { const m = Math.floor(v / 60), s = Math.round(v % 60); return String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0"); },
+    split: v => v >= 1000 ? { v: (v / 1000).toFixed(2), u: "km" } : { v: String(Math.round(v)), u: "m" },
     n1: v => (v == null ? "-" : Number(v).toFixed(1)),
     dir: d => { const names = ["북", "북동", "동", "남동", "남", "남서", "서", "북서"]; return names[Math.round(((d % 360) + 360) % 360 / 45) % 8]; },
   };
@@ -45,9 +47,9 @@
   L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19, attribution: "&copy; OpenStreetMap contributors",
   }).addTo(map);
-  const routeLine = L.polyline([], { color: "#1f5fbf", weight: 3 }).addTo(map);
-  const rthLine = L.polyline([], { color: "#1f9d55", weight: 2, dashArray: "6 6" }).addTo(map);
-  const rangeCircle = L.circle([0, 0], { radius: 0, color: "#d98c0b", weight: 1, fill: false, dashArray: "4 4" });
+  const routeLine = L.polyline([], { color: "#1f74d8", weight: 3 }).addTo(map);
+  const rthLine = L.polyline([], { color: "#1f74d8", weight: 2, opacity: 0.6, dashArray: "6 6" }).addTo(map);
+  const rangeCircle = L.circle([0, 0], { radius: 0, color: "#5d6f7e", weight: 1, fill: false, dashArray: "4 4" });
 
   map.on("click", e => {
     addWaypoint(e.latlng.lat, e.latlng.lng, Number($("defaultAlt").value) || 50, 0);
@@ -90,6 +92,9 @@
     const tb = $("wpTable").querySelector("tbody");
     tb.innerHTML = "";
     $("wpEmpty").classList.toggle("hidden", state.waypoints.length > 0);
+    const tw = $("tagWp");
+    tw.textContent = state.waypoints.length + " 지점";
+    tw.className = "ph-tag" + (state.waypoints.length ? "" : " idle");
     state.waypoints.forEach((wp, i) => {
       const tr = document.createElement("tr");
       tr.innerHTML = `<td>${i + 1}${i === 0 ? "<span class='muted'> 홈</span>" : ""}</td>
@@ -142,6 +147,7 @@
     redraw();
     if (state.waypoints.length) map.fitBounds(routeLine.getBounds().pad(0.3));
     updateProfileInfo();
+    updateTopbar();
   }
 
   function updateProfileInfo() {
@@ -166,17 +172,20 @@
     btn.disabled = true;
     const source = $("weatherSource").value || "auto";
     setStatus(`기상 자료(${SOURCE_REQ_KO[source] || source})를 가져와 시뮬레이션 중…`);
+    setLamp("lampWx", "idle", "기상 조회 중");
     try {
       const res = await state.api.simulate(mission, Number($("nRuns").value), source);
-      if (res.error) { setStatus(res.error, true); if (res.trace) console.error(res.trace); return; }
+      if (res.error) { setStatus(res.error, true); setLamp("lampWx", "crit", "기상 오류"); if (res.trace) console.error(res.trace); return; }
       state.result = res;
       renderResult(res);
       if (!$("view3d").classList.contains("hidden")) show3d(true);   // 3D 뷰가 열려 있으면 새 결과로 다시 재생
       const ws = res.weather_source || {};
       const fallback = ws.requested === "auto" && ws.used !== "kma" && ws.note && ws.note.includes("Open-Meteo");
       setStatus(`완료 · ${sourceLabel(res)} 자료 (${res.weather.timezone})${fallback ? " · 기상청 미사용: " + shortNote(ws.note) : ""}`);
+      setLamp("lampWx", fallback ? "warn" : "ok", fallback ? "Open-Meteo 폴백" : shortSource(res));
     } catch (e) {
       setStatus("실행 오류: " + e, true);
+      setLamp("lampWx", "crit", "기상 오류");
     } finally {
       btn.disabled = false;
     }
@@ -193,6 +202,29 @@
     const m = /폴백: (.+)$/.exec(note || "");
     return m ? m[1] : (note || "").includes("인증키 없음") ? "인증키 없음" : (note || "");
   }
+  /** 상단바 램프용 짧은 소스 이름 */
+  function shortSource(r) {
+    const used = (r.weather_source && r.weather_source.used) || r.weather.source;
+    return used === "kma" ? "기상청" : "Open-Meteo";
+  }
+
+  // ───────────────────────── 상단바 (임무 값 쌍 · 상태 램프)
+  function updateTopbar() {
+    $("tbName").textContent = $("name").value.trim() || "-";
+    $("tbWhen").textContent = ($("date").value || "-") + " " + ($("time").value || "");
+    const p = $("profile"), opt = p.options[p.selectedIndex];
+    $("tbProfile").textContent = opt ? opt.textContent : "-";
+    $("tbSource").textContent = SOURCE_REQ_KO[$("weatherSource").value] || $("weatherSource").value;
+  }
+  /** tone: ok | warn | crit | idle */
+  function setLamp(id, tone, text) {
+    const el = $(id);
+    el.className = "lamp lamp-" + tone;
+    el.innerHTML = "<i></i>";
+    el.appendChild(document.createTextNode(text));
+  }
+  /** 판정 상태 → 칩/스트립 톤 클래스 (fail 은 crit 으로) */
+  function tone(status) { return status === "fail" ? "crit" : status === "warn" ? "warn" : "ok"; }
 
   // ───────────────────────── 결과 표시
   function renderResult(r) {
@@ -205,10 +237,29 @@
     badge.className = "badge " + r.overall;
     $("probability").textContent = Math.round(mc.success_probability * 100);
     $("verdictSub").textContent = `${n.start_time.replace("T", " ")} 출발 · ${mc.runs}회 반복 · 배터리 사용 중앙값 ${fmt.pct(mc.battery_used_p50)}, 90% 구간 ${fmt.pct(mc.battery_used_p90)}`;
-    $("kTime").textContent = fmt.s(n.total_time_s);
-    $("kDist").textContent = fmt.m(n.total_distance_m);
-    $("kBatt").textContent = fmt.pct(n.battery_used_frac);
-    $("kRange").textContent = fmt.m(n.max_dist_home_m);
+    $("tagVerdict").textContent = r.verdict;
+    $("tagVerdict").className = "ph-tag " + tone(r.overall);
+    $("resultNote").textContent = `${n.start_time.replace("T", " ")} 출발 · ${mc.runs}회`;
+    $("btnReport").classList.remove("hidden");
+
+    // 텔레메트리 스트립: 값 + 단위 + 서브라인, 판정 톤
+    const byKey = {};
+    n.checks.forEach(c => { byKey[c.key] = c; });
+    const setTone = (id, c) => { $(id).className = "ro" + (c && c.status !== "ok" && c.status !== "info" ? " ro-" + tone(c.status) : ""); };
+    $("kTime").textContent = fmt.mmss(n.total_time_s);
+    $("kTimeSub").textContent = `10~90% ${fmt.mmss(mc.time_p10_s)} ~ ${fmt.mmss(mc.time_p90_s)}`;
+    setTone("roTime", null);
+    const dist = fmt.split(n.total_distance_m);
+    $("kDist").textContent = dist.v; $("kDistUnit").textContent = dist.u;
+    $("kDistSub").textContent = `최대 고도 ${n.max_alt_m} m · ${r.mission.waypoints.length} 지점`;
+    setTone("roDist", byKey.altitude);
+    $("kBatt").textContent = Math.round(n.battery_used_frac * 100);
+    $("kBattSub").textContent = `${Math.round(n.total_energy_wh)} / 가용 ${Math.round(n.usable_wh)} Wh`;
+    setTone("roBatt", byKey.battery);
+    const rng = fmt.split(n.max_dist_home_m);
+    $("kRange").textContent = rng.v; $("kRangeUnit").textContent = rng.u;
+    $("kRangeSub").textContent = byKey.range ? `기준 ${byKey.range.limit}` : "";
+    setTone("roRange", byKey.range);
 
     // 판정
     const cb = $("checksBody");
@@ -218,6 +269,9 @@
       tr.innerHTML = `<td><span class="dot ${c.status}"></span></td><td>${c.title}</td><td>${c.value}</td><td class="muted">${c.limit}</td><td class="st-${c.status}">${STATUS_KO[c.status]} · ${c.message}</td>`;
       cb.appendChild(tr);
     });
+    const nFail = n.checks.filter(c => c.status === "fail").length, nWarn = n.checks.filter(c => c.status === "warn").length;
+    $("tagChecks").textContent = nFail || nWarn ? [nFail ? `불가 ${nFail}` : "", nWarn ? `주의 ${nWarn}` : ""].filter(Boolean).join(" · ") : "모두 양호";
+    $("tagChecks").className = "ph-tag " + (nFail ? "crit" : nWarn ? "warn" : "ok");
     const fr = $("failReasons");
     fr.innerHTML = "";
     if (!mc.failure_reasons.length) fr.innerHTML = "<li class='muted'>반복 시뮬레이션에서 실패 없음</li>";
@@ -241,6 +295,9 @@
       sb.appendChild(tr);
     });
     $("segStats").textContent = `비행시간 10~90% 구간 ${fmt.s(mc.time_p10_s)} ~ ${fmt.s(mc.time_p90_s)} · 가용 배터리 ${Math.round(n.usable_wh)} Wh 중 ${Math.round(n.total_energy_wh)} Wh 소요`;
+    const segWorst = n.segments.some(s => s.status === "fail") ? "fail" : n.segments.some(s => s.status === "warn") ? "warn" : "ok";
+    $("tagSegments").textContent = `${n.segments.length} 구간 · ${fmt.mmss(n.total_time_s)}`;
+    $("tagSegments").className = "ph-tag " + tone(segWorst);
 
     // 기상
     const w = r.weather_at_start;
@@ -268,6 +325,12 @@
     $("wxSource").textContent = `${sourceLabel(r)} · 지점 ${r.weather.latitude.toFixed(3)}, ${r.weather.longitude.toFixed(3)} · 일출 ${(r.weather.sunrise || "").slice(11, 16)} 일몰 ${(r.weather.sunset || "").slice(11, 16)} · 단위 m/s, °C, mm, km`
       + (r.weather.note ? `\n${r.weather.note}` : "");
 
+    const wsrc = r.weather_source || {};
+    const wxFallback = wsrc.requested === "auto" && wsrc.used !== "kma" && wsrc.note && wsrc.note.includes("Open-Meteo");
+    $("tagWeather").textContent = sourceLabel(r);
+    $("tagWeather").className = "ph-tag " + (wxFallback ? "warn" : "ok");
+    $("wxNote").textContent = `${r.weather.latitude.toFixed(3)}, ${r.weather.longitude.toFixed(3)} · ${r.weather.timezone}`;
+
     // 하드웨어
     const groups = {};
     r.hardware.forEach(h => { (groups[h.category] ||= []).push(h); });
@@ -275,6 +338,8 @@
       `<div class="hwcat"><h4>${cat}</h4>${items.map(h =>
         `<div class="hwitem"><span class="n">${h.name}</span>${h.spec ? `<span class="s">${h.spec}</span>` : ""}${h.trigger ? `<span class="tag">조건: ${TRIGGER_KO[h.trigger] || h.trigger}</span>` : ""}<span class="r">${h.reason}</span></div>`).join("")}</div>`
     ).join("");
+    $("tagHardware").textContent = `${r.hardware.length} 품목`;
+    $("tagHardware").className = "ph-tag";
 
     drawLines();
   }
@@ -383,7 +448,9 @@
     if (s.weather_source) $("weatherSource").value = s.weather_source;
     const tag = $("kmaKeyState");
     tag.textContent = s.kma_key_set ? (s.kma_key_origin === "env" ? "환경변수 키 사용 중" : "키 저장됨") : "키 없음";
-    tag.className = "tag" + (s.kma_key_set ? " ok" : "");
+    tag.className = "ph-tag" + (s.kma_key_set ? " ok" : " idle");
+    setLamp("lampKma", s.kma_key_set ? "ok" : "idle", s.kma_key_set ? "기상청 키" : "기상청 키 없음");
+    updateTopbar();
     $("configPath").textContent = "설정 파일: " + (s.config_path || "");
     $("autoUpdate").checked = s.auto_update !== false;
     $("kmaKey").disabled = s.kma_key_origin === "env";
@@ -447,6 +514,11 @@
     setupView3D();
     $("rth").addEventListener("change", drawLines);
     $("vlos").addEventListener("change", drawLines);
+    ["name", "date", "time", "profile", "weatherSource"].forEach(id => {
+      $(id).addEventListener("input", updateTopbar);
+      $(id).addEventListener("change", updateTopbar);
+    });
+    updateTopbar();
     await loadSettings();
     $("weatherSource").addEventListener("change", async () => {
       const res = await state.api.save_settings({ weather_source: $("weatherSource").value });
@@ -471,8 +543,13 @@
 
   function renderUpdate(st) {
     const tag = $("updateState");
-    tag.textContent = UPDATE_STATE_KO[st.state] || st.state;
-    tag.className = "tag" + (st.state === "ready" ? " tag-ok" : st.state === "error" ? " tag-err" : "");
+    tag.textContent = UPDATE_STATE_KO[st.state] ?? st.state;   // idle 은 빈 칩(숨김)
+    const updTone = (st.state === "ready" || st.state === "none") ? "ok" : st.state === "error" ? "crit"
+      : (st.state === "available" || st.state === "downloading") ? "warn" : "idle";
+    tag.className = "ph-tag " + updTone;
+    const LAMP_KO = { none: "최신", ready: "업데이트 준비", available: "새 버전", downloading: "다운로드 중",
+                      checking: "업데이트 확인 중", error: "업데이트 오류", disabled: "업데이트 꺼짐" };
+    setLamp("lampUpd", updTone, LAMP_KO[st.state] || "업데이트");
     const v = st.latest ? "v" + st.latest.version : "";
     let text = st.message || "";
     if (st.state === "downloading") text += ` ${Math.round((st.progress || 0) * 100)}%`;
@@ -547,11 +624,17 @@
     flight.init().then(() => {
       flight.resize();
       if (flight.result !== state.result) flight.load(state.result);
-      flight.speed = Number($("speed3d").value);
+      flight.speed = currentSpeed();
       flight.setFollow($("follow3d").checked);
       flight.play();
       updatePlayBtn();
     }).catch(e => setStatus("3D 뷰 오류: " + e, true));
+  }
+
+  /** 재생 속도 세그먼트 컨트롤의 현재 값 */
+  function currentSpeed() {
+    const on = $("speed3d").querySelector("button.on");
+    return Number(on ? on.dataset.speed : 5) || 5;
   }
 
   function updatePlayBtn() {
@@ -565,10 +648,10 @@
       : "-";
     $("hud3d").innerHTML =
       `<div class="hudseg">${seg.label || ""}</div>` +
-      `<div><span class="k">고도</span> ${s.alt.toFixed(0)} m <span class="muted">(지면 위 ${s.agl.toFixed(0)} m)</span></div>` +
-      `<div><span class="k">지상속도</span> ${s.groundSpeed.toFixed(1)} m/s · <span class="k">방위</span> ${Math.round(s.heading)}°</div>` +
-      `<div><span class="k">배터리</span> ${Math.round(s.battery * 100)}% 사용</div>` +
-      `<div><span class="k">바람</span> ${wind}</div>` +
+      `<div><span class="k">고도</span><span class="v">${s.alt.toFixed(0)}</span> m <span class="muted">(지면 위 ${s.agl.toFixed(0)} m)</span></div>` +
+      `<div><span class="k">지상속도</span><span class="v">${s.groundSpeed.toFixed(1)}</span> m/s · <span class="k">방위</span><span class="v">${Math.round(s.heading)}</span>°</div>` +
+      `<div><span class="k">배터리</span><span class="v">${Math.round(s.battery * 100)}</span>% 사용</div>` +
+      `<div><span class="k">바람</span>${wind}</div>` +
       (s.danger ? `<div class="danger">⚠ 지형과 간격 5 m 미만 · 고도 확인 필요</div>` : "") +
       (s.done ? `<div class="muted">임무 종료</div>` : "");
     $("time3d").textContent = `${Flight3D.fmtTime(s.t)} / ${Flight3D.fmtTime(s.total)}`;
@@ -581,7 +664,10 @@
     $("btnView3d").addEventListener("click", () => show3d(true));
     $("btnPlay3d").addEventListener("click", () => { if (!flight || !flight.track) return; flight.toggle(); updatePlayBtn(); });
     $("btnReset3d").addEventListener("click", () => { if (!flight || !flight.track) return; flight.seek(0); flight.play(); updatePlayBtn(); });
-    $("speed3d").addEventListener("change", () => { if (flight) flight.speed = Number($("speed3d").value); });
+    $("speed3d").querySelectorAll("button").forEach(b => b.addEventListener("click", () => {
+      $("speed3d").querySelectorAll("button").forEach(x => x.classList.toggle("on", x === b));
+      if (flight) flight.speed = currentSpeed();
+    }));
     $("follow3d").addEventListener("change", () => { if (flight) flight.setFollow($("follow3d").checked); });
     $("seek3d").addEventListener("input", () => {
       if (!flight || !flight.track) return;
