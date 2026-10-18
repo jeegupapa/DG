@@ -74,9 +74,8 @@ Windows 11에는 WebView2 런타임이 내장되어 있어 별도 설치가 필�
 
 ## 자동 업데이트
 
-프로그램은 시작할 때 백그라운드로 **릴리스 전용 공개 저장소** `jeegupapa/DG-releases`의 최신 GitHub Release를 확인합니다.
-소스 저장소(`jeegupapa/DG`)는 비공개로 유지되며, 설치된 프로그램은 인증 없이 공개 저장소의 릴리스만 읽습니다.
-조회 대상은 `config.json`의 `update_repo`로 바꿀 수 있습니다.
+프로그램은 시작할 때 백그라운드로 공개 저장소 `jeegupapa/DG`의 최신 GitHub Release를 확인합니다.
+설치된 프로그램은 인증 없이 조회하므로 저장소는 공개 상태여야 합니다. 조회 대상은 `config.json`의 `update_repo`로 바꿀 수 있습니다.
 
 - 새 버전이 있으면 설치형은 `DroneMissionSim-Setup.exe`, 포터블(설치하지 않고 exe만 실행)은 `DroneMissionSim.exe`를
   내려받아 릴리스의 `SHA256SUMS.txt`로 검증합니다.
@@ -87,26 +86,17 @@ Windows 11에는 WebView2 런타임이 내장되어 있어 별도 설치가 필�
 - 소스로 실행하는 개발 모드에서는 확인만 하고 적용하지 않습니다.
 - 적용 과정의 기록은 `%TEMP%\DroneMissionSim-apply-update.log`에 남습니다. 업데이트가 적용되지 않았을 때 먼저 확인할 파일입니다.
 
-**최초 1회 준비** (릴리스 저장소와 토큰)
-
-1. GitHub에서 **공개** 저장소 `jeegupapa/DG-releases`를 만듭니다. README만 있는 빈 저장소면 됩니다.
-2. Fine-grained personal access token을 발급합니다. 대상 저장소 `DG-releases`, 권한 **Contents: Read and write**.
-3. 소스 저장소 `DG`의 Settings → Secrets and variables → Actions → New repository secret에
-   이름 `RELEASES_TOKEN`으로 토큰을 저장합니다.
-
-시크릿이 없으면 워크플로우가 첫 단계에서 안내 메시지와 함께 실패하며, 시크릿을 추가한 뒤 Actions 화면에서 **Re-run jobs**로 다시 실행하면 됩니다.
-
-**새 버전 배포 방법** (GitHub Actions가 빌드·업로드)
+**새 버전 배포 방법** (GitHub Actions가 빌드·업로드, 별도 준비 없음)
 
 1. `dronesim/__init__.py`의 `__version__`을 올리고 커밋합니다.
 2. 같은 번호로 태그를 붙여 push 합니다.
 
    ```bash
-   git tag v0.2.1 && git push origin v0.2.1
+   git tag v0.2.3 && git push origin v0.2.3
    ```
 
 3. `.github/workflows/release.yml`이 Windows 러너에서 테스트 → exe 빌드 → 설치파일 빌드 → 체크섬 생성 →
-   `DG-releases`에 같은 태그 이름으로 릴리스 생성·자산 업로드를 수행합니다.
+   이 저장소에 릴리스 생성·자산 업로드를 수행합니다.
    태그와 `__version__`이 다르면 실패합니다. 몇 분 뒤 설치된 프로그램들이 새 버전을 받기 시작합니다.
 
 ## 설치파일 만들기

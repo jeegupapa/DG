@@ -22,7 +22,7 @@ from typing import Any, Callable
 
 import httpx
 
-REPO = "jeegupapa/DG-releases"      # 릴리스 전용 공개 저장소 (소스 저장소 jeegupapa/DG 는 비공개)
+REPO = "jeegupapa/DG"               # 공개 저장소. 릴리스(설치파일·exe·체크섬)를 여기서 읽는다
 API_LATEST = "https://api.github.com/repos/{repo}/releases/latest"
 ASSET_SETUP = "DroneMissionSim-Setup.exe"
 ASSET_EXE = "DroneMissionSim.exe"

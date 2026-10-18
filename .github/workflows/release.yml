@@ -1,10 +1,6 @@
-# 태그(v*)를 push 하면 Windows 에서 exe·설치파일을 빌드해 공개 릴리스 저장소(jeegupapa/DG-releases)에 올린다.
-# 소스 저장소(jeegupapa/DG)는 비공개로 유지되고, 설치된 프로그램은 DG-releases 의 릴리스만 읽는다.
-#
-# 사전 준비 (한 번만)
-#   1. 공개 저장소 jeegupapa/DG-releases 생성 (README 하나 있는 빈 저장소면 됨)
-#   2. Fine-grained PAT 발급: 대상 저장소 DG-releases, 권한 Contents: Read and write
-#   3. 이 저장소(DG) Settings → Secrets and variables → Actions 에 RELEASES_TOKEN 이름으로 저장
+# 태그(v*)를 push 하면 Windows 에서 exe·설치파일을 빌드해 이 저장소(jeegupapa/DG)의 GitHub Release 에 올린다.
+# 설치된 프로그램은 이 릴리스의 자산(DroneMissionSim-Setup.exe, DroneMissionSim.exe, SHA256SUMS.txt)을 읽어 자동 업데이트한다.
+# 저장소는 공개여야 한다(프로그램은 인증 없이 릴리스를 조회).
 name: release
 
 on:
@@ -12,25 +8,13 @@ on:
     tags: ["v*"]
 
 permissions:
-  contents: read
-
-env:
-  RELEASE_REPO: jeegupapa/DG-releases
+  contents: write
 
 jobs:
   build:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: 릴리스 토큰 확인
-        shell: pwsh
-        env:
-          RELEASES_TOKEN: ${{ secrets.RELEASES_TOKEN }}
-        run: |
-          if (-not $env:RELEASES_TOKEN) {
-            throw "RELEASES_TOKEN 시크릿이 없습니다. DG-releases 에 Contents 쓰기 권한이 있는 PAT 를 이 저장소의 Actions 시크릿 RELEASES_TOKEN 으로 추가한 뒤 이 워크플로우를 다시 실행하세요."
-          }
 
       - uses: actions/setup-python@v5
         with:
@@ -75,16 +59,12 @@ jobs:
           [System.IO.File]::WriteAllLines("dist\SHA256SUMS.txt", $lines)
           Get-Content dist\SHA256SUMS.txt
 
-      - name: 공개 릴리스 저장소에 릴리스 생성·자산 업로드
+      - name: 릴리스 생성·자산 업로드
         uses: softprops/action-gh-release@v2
         with:
-          repository: ${{ env.RELEASE_REPO }}
-          token: ${{ secrets.RELEASES_TOKEN }}
-          tag_name: ${{ github.ref_name }}
           name: "드론 임무 시뮬레이터 v${{ steps.ver.outputs.version }}"
+          generate_release_notes: true
           body: |
-            드론 임무 시뮬레이터 v${{ steps.ver.outputs.version }}
-
             - 설치: `DroneMissionSim-Setup.exe` 실행 (사용자 계정 범위, 관리자 권한 불필요)
             - 설치 없이 실행: `DroneMissionSim.exe`
             - 무결성 확인: `SHA256SUMS.txt`
