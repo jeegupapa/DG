@@ -1,4 +1,4 @@
-# Windows 단일 실행파일 빌드
+﻿# Windows 단일 실행파일 빌드
 #   .\build.ps1          → dist\DroneMissionSim.exe
 # PyInstaller는 진행 로그를 stderr로 출력하므로 ErrorActionPreference=Stop을 쓰지 않고
 # 종료 코드($LASTEXITCODE)로 성공 여부를 판정한다.

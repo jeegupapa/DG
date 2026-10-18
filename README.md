@@ -69,6 +69,23 @@ Windows 11에는 WebView2 런타임이 내장되어 있어 별도 설치가 필�
 
 `dist\DroneMissionSim.exe` 한 파일로 배포됩니다.
 
+## 설치파일 만들기
+
+exe 빌드 후 아래를 실행하면 Windows 내장 IExpress로 설치파일을 만듭니다. 별도 도구 설치가 필요 없습니다.
+
+```powershell
+.\installer\make_installer.ps1
+```
+
+- 산출물: `dist\DroneMissionSim-Setup.exe`
+- 설치 위치: `%LOCALAPPDATA%\Programs\DroneMissionSim` (사용자 계정 범위, 관리자 권한 불필요)
+- 시작 메뉴와 바탕화면에 "드론 임무 시뮬레이터" 바로가기 생성
+- 설정 > 앱 > 설치된 앱(제어판 프로그램 제거)에 등록되어 거기서 제거 가능
+- 조용한 설치: `DroneMissionSim-Setup.exe /Q`, 조용한 제거: 설치 폴더의 `uninstall.cmd /quiet`
+- 코드 서명이 없으므로 처음 실행 시 SmartScreen 경고가 뜰 수 있습니다. "추가 정보 → 실행"으로 진행합니다.
+
+설치 동작은 `installer/install.ps1`, 제거는 `installer/uninstall.ps1`에 있습니다.
+
 ## 테스트
 
 ```bash
