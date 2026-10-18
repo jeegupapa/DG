@@ -207,26 +207,44 @@ def required_asset(mode: str) -> str:
 
 # ---------------------------------------------------------------- 적용 스크립트
 
-APPLY_SCRIPT = r"""# DroneMissionSim 업데이트 적용 (자동 생성)
+APPLY_SCRIPT = r"""# DroneMissionSim 업데이트 적용 (자동 생성). 진행 기록: %TEMP%\DroneMissionSim-apply-update.log
 param([int]$ProcId, [string]$Mode, [string]$NewFile, [string]$Exe, [switch]$Relaunch)
-$ErrorActionPreference = "SilentlyContinue"
-if ($ProcId -gt 0) { Wait-Process -Id $ProcId -Timeout 120 }
-Start-Sleep -Milliseconds 700
-Get-Process -Name "DroneMissionSim" | Where-Object { $_.Id -ne $PID } | Stop-Process -Force
-Start-Sleep -Milliseconds 300
-if ($Mode -eq "installer") {
-    Start-Process -FilePath $NewFile -ArgumentList "/Q" -Wait
-} else {
-    $bak = "$Exe.old"
-    if (Test-Path $bak) { Remove-Item $bak -Force }
-    Move-Item -Path $Exe -Destination $bak -Force
-    Copy-Item -Path $NewFile -Destination $Exe -Force
-    if (-not (Test-Path $Exe)) { Move-Item -Path $bak -Destination $Exe -Force }
+$ErrorActionPreference = "Continue"
+$Log = Join-Path $env:TEMP "DroneMissionSim-apply-update.log"
+function L($m) { Add-Content -Path $Log -Value ("{0} {1}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"), $m) -Encoding UTF8 }
+L "---- start mode=$Mode pid=$ProcId new=$NewFile exe=$Exe relaunch=$Relaunch"
+L "env TEMP=$env:TEMP cwd=$(Get-Location) user=$env:USERNAME"
+# 함수 이름은 PowerShell 기본 별칭(h, r, …)과 겹치지 않게 긴 이름을 쓴다
+function Get-ShortHash($FilePath) { try { (Get-FileHash -Algorithm SHA256 -LiteralPath $FilePath -ErrorAction Stop).Hash.ToLower().Substring(0, 12) } catch { "-" } }
+L "exe hash before=$(Get-ShortHash $Exe) new file hash=$(Get-ShortHash $NewFile)"
+try {
+    if ($ProcId -gt 0) { Wait-Process -Id $ProcId -Timeout 120 -ErrorAction SilentlyContinue; L "target process exited" }
+    Start-Sleep -Milliseconds 700
+    Get-Process -Name "DroneMissionSim" -ErrorAction SilentlyContinue | Where-Object { $_.Id -ne $PID } | ForEach-Object { L "stopping leftover pid=$($_.Id)"; Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue }
+    Start-Sleep -Milliseconds 300
+    if (-not (Test-Path $NewFile)) { L "ERROR new file missing"; throw "new file missing" }
+    if ($Mode -eq "installer") {
+        L "running installer /Q"
+        $p = Start-Process -FilePath $NewFile -ArgumentList "/Q" -Wait -PassThru -WorkingDirectory $env:TEMP
+        L "installer exit=$($p.ExitCode) exe hash after=$(Get-ShortHash $Exe)"
+        $ixp = Get-ChildItem (Join-Path $env:TEMP "IXP*.TMP") -Directory -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName
+        if ($ixp) { L "leftover extraction dirs: $($ixp -join ', ')" }
+    } else {
+        $bak = "$Exe.old"
+        if (Test-Path $bak) { Remove-Item $bak -Force }
+        Move-Item -Path $Exe -Destination $bak -Force
+        Copy-Item -Path $NewFile -Destination $Exe -Force
+        if (-not (Test-Path $Exe)) { L "ERROR copy failed, restoring"; Move-Item -Path $bak -Destination $Exe -Force }
+        else { L "exe replaced" }
+    }
+    if ($Relaunch -and (Test-Path $Exe)) { L "relaunching"; Start-Process -FilePath $Exe }
+    Start-Sleep -Seconds 3
+    if ($Mode -ne "installer") { Remove-Item "$Exe.old" -Force -ErrorAction SilentlyContinue }
+    L "done"
+} catch {
+    L "ERROR $($_.Exception.Message)"
 }
-if ($Relaunch -and (Test-Path $Exe)) { Start-Process -FilePath $Exe }
-Start-Sleep -Seconds 3
-if ($Mode -ne "installer") { Remove-Item "$Exe.old" -Force }
-Remove-Item $MyInvocation.MyCommand.Path -Force
+Remove-Item $MyInvocation.MyCommand.Path -Force -ErrorAction SilentlyContinue
 """
 
 
@@ -247,10 +265,19 @@ def apply_command(script: Path, mode: str, new_file: Path, exe: Path, pid: int, 
 
 
 def launch_detached(cmd: list[str]) -> None:
+    """부모(앱)가 종료되어도 계속 도는 숨은 PowerShell 을 띄운다.
+
+    DETACHED_PROCESS 는 콘솔을 아예 만들지 않아 powershell.exe 가 바로 종료되므로 쓰지 않는다.
+    CREATE_NO_WINDOW 는 콘솔을 만들되 창을 보이지 않게 하고, 새 프로세스 그룹으로 분리한다.
+    """
     flags = 0
+    startupinfo = None
     if os.name == "nt":
-        flags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP   # type: ignore[attr-defined]
-    subprocess.Popen(cmd, creationflags=flags, close_fds=True,
+        flags = subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP   # type: ignore[attr-defined]
+        startupinfo = subprocess.STARTUPINFO()                                     # type: ignore[attr-defined]
+        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW                     # type: ignore[attr-defined]
+        startupinfo.wShowWindow = 0                                                # SW_HIDE
+    subprocess.Popen(cmd, creationflags=flags, startupinfo=startupinfo, close_fds=True,
                      stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 

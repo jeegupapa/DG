@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>드론 비행 시뮬레이터 · 플라이트 콘솔</title>
+
+<!-- =====================================================================
+  드론 시뮬레이션 콘솔 — 설계 메모
+  ---------------------------------------------------------------------
+  · 가정: 별도 디자인 시스템이 없으므로 아래 톤을 새로 정의했습니다.
+      - 밝은 테마. 배경은 살짝 녹색기가 도는 뉴트럴(#f1f3f2)로, 순백 패널과
+        구분되게 했습니다. 산업용 계기/관제 장비의 사출 플라스틱 느낌을
+        노린 선택입니다. 채도는 낮게(oklch 기준 chroma 0.005 내외) 유지.
+      - 강조색은 단 하나 — 딥 블루(#1f74d8). "기체/현재 위치/현재 값"에만
+        씁니다. 초록=정상, 앰버=주의, 레드=경고는 상태 전용으로 분리해서
+        강조색과 의미가 섞이지 않게 했습니다.
+      - 지형은 HSL 램프 6단계로만 표현(고도대별 색상 + 사면 음영). 위성사진
+        대신 등고 색상 지도 스타일 — 라이선스 문제도 없고 수치와 잘 맞습니다.
+      - 타입: IBM Plex Sans KR(UI) + IBM Plex Mono(모든 숫자). 숫자는 전부
+        tabular-nums 로 고정폭. 값이 흔들려도 자릿수가 안 움직입니다.
+  · 수치(속도/고도/거리/자세/배터리/GNSS)는 전부 실제 물리 적분 결과입니다.
+    목업 숫자가 아니라 sim.js 가 60Hz 로 계산한 상태를 그대로 읽습니다.
+  · 4가지 레이아웃을 Tweaks 로 즉시 전환할 수 있게 했습니다.
+  ===================================================================== -->
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+<link rel="stylesheet" href="styles.css?v=2" />
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script src="util.js"></script>
+<script src="sim.js"></script>
+<script src="render.js"></script>
+
+<script>
+  window.TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+    "layout": "console",
+    "density": "standard",
+    "units": "metric",
+    "accent": "#1f74d8",
+    "show3d": true,
+    "showMap": true,
+    "showCamPip": true,
+    "showMapPip": true,
+    "camZoom": 1.6,
+    "simSpeed": 1
+  }/*EDITMODE-END*/;
+</script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel" src="tweaks_panel.jsx"></script>
+  <script type="text/babel" src="gauges.jsx"></script>
+  <script type="text/babel" src="views.jsx"></script>
+  <script type="text/babel" src="panels.jsx"></script>
+  <script type="text/babel" src="app.jsx"></script>
+</body>
+</html>
