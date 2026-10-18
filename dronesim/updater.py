@@ -237,7 +237,15 @@ try {
         if (-not (Test-Path $Exe)) { L "ERROR copy failed, restoring"; Move-Item -Path $bak -Destination $Exe -Force }
         else { L "exe replaced" }
     }
-    if ($Relaunch -and (Test-Path $Exe)) { L "relaunching"; Start-Process -FilePath $Exe }
+    if ($Relaunch -and (Test-Path $Exe)) {
+        # 이전 인스턴스(PyInstaller 부트로더)가 임시 폴더 정리를 끝내고 완전히 사라질 때까지 기다린 뒤 재실행.
+        # 바로 재실행하면 새 인스턴스의 _MEI 폴더가 이전 정리와 겹쳐 'Failed to load Python DLL' 이 날 수 있다.
+        $w = 0
+        while ((Get-Process -Name "DroneMissionSim" -ErrorAction SilentlyContinue) -and $w -lt 30) { Start-Sleep -Milliseconds 500; $w++ }
+        Start-Sleep -Seconds 2
+        L "relaunching (waited $($w * 0.5)s for previous instances)"
+        Start-Process -FilePath $Exe -WorkingDirectory (Split-Path -Parent $Exe)
+    }
     Start-Sleep -Seconds 3
     if ($Mode -ne "installer") { Remove-Item "$Exe.old" -Force -ErrorAction SilentlyContinue }
     L "done"

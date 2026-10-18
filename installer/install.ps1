@@ -14,8 +14,20 @@ $ExeName     = "DroneMissionSim.exe"
 $Src  = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Dest = Join-Path $env:LOCALAPPDATA "Programs\$AppName"
 
-# 실행 중이면 종료
-Get-Process -Name ([IO.Path]::GetFileNameWithoutExtension($ExeName)) -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+# 실행 중이면 종료: 먼저 창 닫기(정상 종료 → 임시 폴더 정리), 안 닫히면 강제 종료
+$procName = [IO.Path]::GetFileNameWithoutExtension($ExeName)
+$running = Get-Process -Name $procName -ErrorAction SilentlyContinue
+if ($running) {
+    $running | Where-Object { $_.MainWindowHandle -ne 0 } | ForEach-Object { $_.CloseMainWindow() | Out-Null }
+    $w = 0
+    while ((Get-Process -Name $procName -ErrorAction SilentlyContinue) -and $w -lt 20) { Start-Sleep -Milliseconds 500; $w++ }
+    Get-Process -Name $procName -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 1
+}
+# 강제 종료된 PyInstaller 인스턴스가 남긴 오래된 임시 폴더(_MEI*) 정리 (사용 중인 폴더는 삭제 실패해도 무시)
+Get-ChildItem -Path $env:TEMP -Directory -Filter "_MEI*" -ErrorAction SilentlyContinue |
+    Where-Object { $_.CreationTime -lt (Get-Date).AddMinutes(-10) } |
+    ForEach-Object { Remove-Item -Path $_.FullName -Recurse -Force -ErrorAction SilentlyContinue }
 
 New-Item -ItemType Directory -Force -Path $Dest | Out-Null
 foreach ($f in @($ExeName, "uninstall.ps1", "uninstall.cmd")) {
