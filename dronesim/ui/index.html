@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>드론 임무 시뮬레이터</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+  <!-- ───────────── 왼쪽: 임무 입력 ───────────── -->
+  <aside class="panel left">
+    <header class="brand">
+      <h1>드론 임무 시뮬레이터</h1>
+      <span id="appVersion" class="muted"></span>
+    </header>
+
+    <section class="card">
+      <h2>임무</h2>
+      <label>임무 이름 <input id="name" type="text" value="시험임무"></label>
+      <div class="row2">
+        <label>날짜 <input id="date" type="date"></label>
+        <label>출발 시각 <input id="time" type="time" value="09:00" step="600"></label>
+      </div>
+      <div class="row2">
+        <label>기체 프로필
+          <select id="profile"></select>
+        </label>
+        <label>임무 유형
+          <select id="missionType">
+            <option>촬영</option><option>운송</option><option>순찰</option><option>측량</option>
+          </select>
+        </label>
+      </div>
+      <div class="row2">
+        <label>페이로드 (kg) <input id="payload" type="number" min="0" step="0.1" value="0"></label>
+        <label>기본 고도 (m) <input id="defaultAlt" type="number" min="5" max="500" step="5" value="50"></label>
+      </div>
+      <div class="checks">
+        <label><input id="rth" type="checkbox" checked> 임무 후 출발지 복귀</label>
+        <label><input id="vlos" type="checkbox" checked> 가시권 운용</label>
+        <label><input id="nightApproved" type="checkbox"> 야간 특별승인 보유</label>
+        <label><input id="gpsRisk" type="checkbox"> GPS 취약 지역(도심·교란 우려)</label>
+      </div>
+      <p id="profileInfo" class="muted small"></p>
+    </section>
+
+    <section class="card">
+      <h2>웨이포인트 <span class="muted small">지도를 클릭해 추가, 마커는 드래그 가능</span></h2>
+      <table id="wpTable" class="wp">
+        <thead><tr><th>#</th><th>위도</th><th>경도</th><th>고도 m</th><th>체공 s</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <p id="wpEmpty" class="muted small">첫 웨이포인트가 출발지(홈)입니다.</p>
+      <div class="btnrow">
+        <button id="btnClear" class="ghost">전체 지우기</button>
+        <button id="btnLoad" class="ghost">임무 불러오기</button>
+        <button id="btnSaveJson" class="ghost">임무 저장</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="row2">
+        <label>반복 횟수
+          <select id="nRuns"><option>200</option><option selected>500</option><option>1000</option></select>
+        </label>
+        <label>기상 소스
+          <select id="weatherSource" title="auto: 기상청 인증키가 있으면 기상청, 없거나 실패하면 Open-Meteo">
+            <option value="auto">자동 (기상청 → Open-Meteo)</option>
+            <option value="kma">기상청 단기예보</option>
+            <option value="open-meteo">Open-Meteo</option>
+          </select>
+        </label>
+      </div>
+      <button id="btnRun" class="primary">시뮬레이션 실행</button>
+      <div class="btnrow">
+        <button id="btnPlan" class="ghost">.plan 내보내기 (QGC)</button>
+        <button id="btnWaypoints" class="ghost">.waypoints 내보내기 (MP)</button>
+      </div>
+      <p id="status" class="status"></p>
+    </section>
+
+    <details class="card settings" id="settingsCard">
+      <summary>설정 · 기상청 API 인증키 <span id="kmaKeyState" class="tag"></span></summary>
+      <p class="muted small">공공데이터포털에서 "기상청_단기예보 ((구)_동네예보) 조회서비스" 활용신청 후 받은
+        일반 인증키(Encoding/Decoding 어느 쪽이든)를 붙여 넣으세요. 환경변수 <code>KMA_SERVICE_KEY</code>가 있으면 그 값이 우선합니다.</p>
+      <label>인증키 <input id="kmaKey" type="password" autocomplete="off" placeholder="저장된 키는 표시되지 않습니다"></label>
+      <div class="btnrow">
+        <button id="btnKmaSave" class="ghost">저장</button>
+        <button id="btnKmaCheck" class="ghost">연결 확인</button>
+        <button id="btnKmaClear" class="ghost">키 삭제</button>
+      </div>
+      <p id="kmaStatus" class="status"></p>
+      <p id="configPath" class="muted small"></p>
+    </details>
+  </aside>
+
+  <!-- ───────────── 가운데: 지도 ───────────── -->
+  <main id="map"></main>
+
+  <!-- ───────────── 오른쪽: 결과 ───────────── -->
+  <aside class="panel right">
+    <div id="resultEmpty" class="empty">
+      <p>임무를 입력하고 <b>시뮬레이션 실행</b>을 누르면 그날의 기상으로 성공 여부, 구간별 소요, 필요 하드웨어가 표시됩니다.</p>
+    </div>
+
+    <div id="result" class="hidden">
+      <header class="verdict">
+        <div id="verdictBadge" class="badge">-</div>
+        <div class="verdictText">
+          <div class="big"><span id="probability">-</span><span class="unit">% 성공 확률</span></div>
+          <div id="verdictSub" class="muted small"></div>
+        </div>
+        <button id="btnReport" class="ghost small">보고서 저장</button>
+      </header>
+
+      <div class="kpis">
+        <div class="kpi"><span class="k">비행시간</span><span id="kTime" class="v">-</span></div>
+        <div class="kpi"><span class="k">총 거리</span><span id="kDist" class="v">-</span></div>
+        <div class="kpi"><span class="k">배터리 사용</span><span id="kBatt" class="v">-</span></div>
+        <div class="kpi"><span class="k">최대 이격</span><span id="kRange" class="v">-</span></div>
+      </div>
+
+      <nav class="tabs">
+        <button data-tab="checks" class="active">판정</button>
+        <button data-tab="segments">구간</button>
+        <button data-tab="weather">기상</button>
+        <button data-tab="hardware">하드웨어</button>
+      </nav>
+
+      <section id="tab-checks" class="tab active">
+        <table class="grid">
+          <thead><tr><th></th><th>항목</th><th>값</th><th>기준</th><th>판정</th></tr></thead>
+          <tbody id="checksBody"></tbody>
+        </table>
+        <h3>실패 원인 분포 <span class="muted small">(반복 시뮬레이션)</span></h3>
+        <ul id="failReasons" class="reasons"></ul>
+      </section>
+
+      <section id="tab-segments" class="tab">
+        <table class="grid">
+          <thead><tr><th>구간</th><th>거리</th><th>시간</th><th>지상속도</th><th>바람</th><th>전력</th><th></th></tr></thead>
+          <tbody id="segBody"></tbody>
+        </table>
+        <p id="segStats" class="muted small"></p>
+      </section>
+
+      <section id="tab-weather" class="tab">
+        <div id="wxSummary" class="wx"></div>
+        <table class="grid">
+          <thead><tr><th>시각</th><th>기온</th><th>풍속 10 m</th><th>풍속 고도</th><th>돌풍</th><th>강수</th><th>시정</th></tr></thead>
+          <tbody id="wxBody"></tbody>
+        </table>
+        <p id="wxSource" class="muted small"></p>
+      </section>
+
+      <section id="tab-hardware" class="tab">
+        <div id="hwList"></div>
+      </section>
+    </div>
+  </aside>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,58 @@
+{
+  "base": [
+    {"category": "기체", "name": "{frame_class} 기체", "spec": "{profile_name}", "reason": "선택한 기체 프로필"},
+    {"category": "비행제어", "name": "Pixhawk 계열 비행제어기", "spec": "Pixhawk 6C 또는 6X", "reason": "자세·위치 제어, 자동비행, failsafe"},
+    {"category": "항법", "name": "GNSS + Compass 모듈", "spec": "u-blox M10 계열", "reason": "GPS 지점 이동"},
+    {"category": "통신", "name": "텔레메트리 라디오", "spec": "SiK 915 MHz 1조", "reason": "지상국 MAVLink 통신"},
+    {"category": "조종", "name": "RC 조종기 + 수신기", "spec": "킬스위치 채널 포함", "reason": "비상 수동 개입"},
+    {"category": "전원", "name": "배터리 충전기", "spec": "동시 충전 가능 모델", "reason": "운용 중 재충전"},
+    {"category": "지상국", "name": "지상국 노트북", "spec": "Mission Planner / QGroundControl", "reason": "임무 업로드, 상태 감시"},
+    {"category": "안전", "name": "비행 전 점검표·소화기·안전조끼", "spec": "", "reason": "비행시험 안전 절차"}
+  ],
+  "conditional": {
+    "bvlos": [
+      {"category": "통신", "name": "LTE/5G 텔레메트리 모뎀", "spec": "장거리 MAVLink 중계", "reason": "가시권 밖 또는 텔레메트리 거리 초과"},
+      {"category": "운용", "name": "보조 관측자 배치", "spec": "", "reason": "가시권 밖 운용 시 안전 확보"},
+      {"category": "행정", "name": "특별비행승인(비가시권) 검토", "spec": "드론원스톱", "reason": "가시권 밖 비행은 승인 대상"}
+    ],
+    "night": [
+      {"category": "안전", "name": "충돌방지등·위치등", "spec": "전후좌우 식별 가능", "reason": "야간 비행 시 기체 식별"},
+      {"category": "행정", "name": "특별비행승인(야간) 검토", "spec": "드론원스톱", "reason": "야간 비행은 승인 대상"}
+    ],
+    "high_altitude": [
+      {"category": "행정", "name": "비행승인 신청", "spec": "고도 150 m 초과", "reason": "150 m 이상 비행은 승인 대상"}
+    ],
+    "long_duration": [
+      {"category": "전원", "name": "예비 배터리 추가 세트", "spec": "임무 소요 전력 기준 산정", "reason": "단일 배터리 체공시간 초과"}
+    ],
+    "camera_payload": [
+      {"category": "임무장비", "name": "카메라 + 3축 짐벌", "spec": "", "reason": "촬영/측량 임무"}
+    ],
+    "survey_payload": [
+      {"category": "항법", "name": "RTK GNSS (Base + Rover)", "spec": "u-blox F9P", "reason": "측량 임무 정밀 위치"}
+    ],
+    "delivery_payload": [
+      {"category": "임무장비", "name": "화물 고정·투하 장치", "spec": "페이로드 중량 기준", "reason": "운송 임무"}
+    ],
+    "patrol_payload": [
+      {"category": "임무장비", "name": "짐벌 카메라(가시광 또는 열화상)", "spec": "", "reason": "순찰 임무 영상 확인"}
+    ],
+    "gps_risk": [
+      {"category": "항법", "name": "Companion Computer", "spec": "Jetson Orin Nano 이상", "reason": "GPS 취약 지역 비GPS 항법 처리"},
+      {"category": "항법", "name": "하향 Global Shutter 카메라", "spec": "Optical Flow / VIO", "reason": "GPS 손실 시 위치 유지"},
+      {"category": "항법", "name": "거리센서(LiDAR/ToF)", "spec": "저고도 고도 유지", "reason": "Optical Flow 거리 기준"}
+    ],
+    "strong_wind": [
+      {"category": "기체", "name": "상위 기체급 또는 일정 변경 검토", "spec": "", "reason": "예상 풍속이 기체 한계의 70% 초과"}
+    ],
+    "rain": [
+      {"category": "기체", "name": "방수 등급 기체 또는 일정 변경", "spec": "IP43 이상", "reason": "강수 예상"}
+    ],
+    "cold": [
+      {"category": "전원", "name": "배터리 보온 가방·예열", "spec": "", "reason": "저온에서 배터리 성능 저하"}
+    ],
+    "heavy_payload": [
+      {"category": "기체", "name": "페이로드 마운트 보강", "spec": "", "reason": "최대 페이로드의 70% 초과"}
+    ]
+  }
+}
