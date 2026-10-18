@@ -17,6 +17,8 @@ ENV_CONFIG_DIR = "DRONESIM_CONFIG_DIR"
 
 KEY_KMA = "kma_service_key"
 KEY_WEATHER_SOURCE = "weather_source"
+KEY_AUTO_UPDATE = "auto_update"
+KEY_UPDATE_REPO = "update_repo"          # 릴리스를 읽을 GitHub 저장소 "owner/name" (공개여야 함)
 WEATHER_SOURCES = ("auto", "kma", "open-meteo")
 
 
@@ -77,6 +79,17 @@ def kma_key_origin() -> str | None:
     if str(load_config().get(KEY_KMA, "") or "").strip():
         return "config"
     return None
+
+
+def get_auto_update() -> bool:
+    """업데이트 자동 확인·다운로드·종료 시 적용 여부. 기본값 True."""
+    v = load_config().get(KEY_AUTO_UPDATE, True)
+    return bool(v) if isinstance(v, bool) else str(v).lower() not in ("0", "false", "no", "off")
+
+
+def get_update_repo(default: str) -> str:
+    v = str(load_config().get(KEY_UPDATE_REPO, "") or "").strip()
+    return v if "/" in v else default
 
 
 def get_default_weather_source() -> str:

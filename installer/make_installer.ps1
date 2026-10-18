@@ -17,6 +17,14 @@ foreach ($f in @($Exe, "$Root\install.cmd", "$Root\install.ps1", "$Root\uninstal
     Copy-Item -Path $f -Destination $Payload
 }
 
+# 버전은 dronesim/__init__.py 의 __version__ 을 단일 출처로 쓴다 (설치 목록 표시용)
+$Version = (Select-String -Path (Join-Path $Proj "dronesim\__init__.py") -Pattern '__version__\s*=\s*"([^"]+)"').Matches[0].Groups[1].Value
+$installPs1 = Join-Path $Payload "install.ps1"
+$src = [System.IO.File]::ReadAllText($installPs1, [System.Text.Encoding]::UTF8)
+$src = $src -replace '\$Version\s*=\s*"[^"]*"', ('$Version     = "' + $Version + '"')
+[System.IO.File]::WriteAllText($installPs1, $src, (New-Object System.Text.UTF8Encoding $true))
+Write-Host "버전: $Version"
+
 $Target = Join-Path $Proj "dist\DroneMissionSim-Setup.exe"
 if (Test-Path $Target) { Remove-Item -Force $Target }
 

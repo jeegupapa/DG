@@ -17,6 +17,7 @@
       <h1>드론 임무 시뮬레이터</h1>
       <span id="appVersion" class="muted"></span>
     </header>
+    <div id="updateBanner" class="banner hidden"></div>
 
     <section class="card">
       <h2>임무</h2>
@@ -95,6 +96,19 @@
       </div>
       <p id="kmaStatus" class="status"></p>
       <p id="configPath" class="muted small"></p>
+    </details>
+
+    <details class="card settings" id="updateCard">
+      <summary>업데이트 <span id="updateState" class="tag"></span></summary>
+      <div class="checks">
+        <label><input id="autoUpdate" type="checkbox" checked> 새 버전을 자동으로 확인·다운로드하고 종료할 때 적용</label>
+      </div>
+      <div class="btnrow">
+        <button id="btnUpdateCheck" class="ghost">지금 확인</button>
+        <button id="btnUpdateApply" class="ghost" disabled>지금 적용 (재시작)</button>
+      </div>
+      <p id="updateStatus" class="status"></p>
+      <p class="muted small">배포 채널: GitHub Releases (jeegupapa/DG). 다운로드 파일은 릴리스의 SHA-256 체크섬으로 검증합니다.</p>
     </details>
   </aside>
 

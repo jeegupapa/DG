@@ -385,6 +385,7 @@
     tag.textContent = s.kma_key_set ? (s.kma_key_origin === "env" ? "환경변수 키 사용 중" : "키 저장됨") : "키 없음";
     tag.className = "tag" + (s.kma_key_set ? " ok" : "");
     $("configPath").textContent = "설정 파일: " + (s.config_path || "");
+    $("autoUpdate").checked = s.auto_update !== false;
     $("kmaKey").disabled = s.kma_key_origin === "env";
     if (s.kma_key_origin === "env") $("kmaKey").placeholder = "환경변수 KMA_SERVICE_KEY 가 우선 적용됩니다";
   }
@@ -455,11 +456,68 @@
     $("btnKmaCheck").addEventListener("click", checkKmaKey);
     $("btnKmaClear").addEventListener("click", clearKmaKey);
     $("kmaKey").addEventListener("keydown", ev => { if (ev.key === "Enter") saveKmaKey(); });
+    setupUpdater();
     document.querySelectorAll(".tabs button").forEach(b => b.addEventListener("click", () => {
       document.querySelectorAll(".tabs button").forEach(x => x.classList.toggle("active", x === b));
       document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.id === "tab-" + b.dataset.tab));
     }));
     renderWpTable();
+  }
+
+  // ───────────────────────── 자동 업데이트
+  const UPDATE_STATE_KO = { idle: "", checking: "확인 중", none: "최신", available: "새 버전", downloading: "다운로드 중",
+                            ready: "준비됨", error: "오류", disabled: "꺼짐" };
+  let updateTimer = null, updateDismissed = false;
+
+  function renderUpdate(st) {
+    const tag = $("updateState");
+    tag.textContent = UPDATE_STATE_KO[st.state] || st.state;
+    tag.className = "tag" + (st.state === "ready" ? " tag-ok" : st.state === "error" ? " tag-err" : "");
+    const v = st.latest ? "v" + st.latest.version : "";
+    let text = st.message || "";
+    if (st.state === "downloading") text += ` ${Math.round((st.progress || 0) * 100)}%`;
+    if (st.state === "none" && !text) text = `최신 버전입니다 (v${st.current}).`;
+    $("updateStatus").textContent = text;
+    $("updateStatus").classList.toggle("err", st.state === "error");
+    $("btnUpdateApply").disabled = !st.can_apply;
+    $("btnUpdateCheck").disabled = st.state === "checking" || st.state === "downloading";
+
+    const banner = $("updateBanner");
+    if (st.state === "ready" && st.can_apply && !updateDismissed) {
+      banner.innerHTML = `<span>새 버전 <b>${v}</b> 이 준비되었습니다. 지금 적용하면 프로그램이 다시 시작됩니다.</span>` +
+        `<button id="bannerApply" class="small primary">지금 적용</button><button id="bannerLater" class="small ghost">나중에</button>`;
+      banner.classList.remove("hidden");
+      $("bannerApply").addEventListener("click", applyUpdate);
+      $("bannerLater").addEventListener("click", () => { updateDismissed = true; banner.classList.add("hidden"); });
+    } else if (st.state === "downloading" && !updateDismissed) {
+      banner.innerHTML = `<span>새 버전 ${v} 다운로드 중… ${Math.round((st.progress || 0) * 100)}%</span>`;
+      banner.classList.remove("hidden");
+    } else if (st.state !== "ready") {
+      banner.classList.add("hidden");
+    }
+    // 진행 중이면 계속 관찰, 끝나면 멈춤
+    const active = st.state === "checking" || st.state === "downloading";
+    if (active && !updateTimer) updateTimer = setInterval(pollUpdate, 1500);
+    if (!active && updateTimer) { clearInterval(updateTimer); updateTimer = null; }
+  }
+  async function pollUpdate() {
+    try { renderUpdate(await state.api.update_status()); } catch (_) { /* 무시 */ }
+  }
+  async function applyUpdate() {
+    $("btnUpdateApply").disabled = true;
+    const res = await state.api.apply_update();
+    if (res.error) { setStatus("업데이트 적용 실패: " + res.error, true); $("btnUpdateApply").disabled = false; return; }
+    $("updateStatus").textContent = state.desktop ? "적용 중… 프로그램이 다시 시작됩니다." : "적용 명령을 실행했습니다.";
+  }
+  function setupUpdater() {
+    $("btnUpdateCheck").addEventListener("click", async () => { renderUpdate(await state.api.check_update(true)); });
+    $("btnUpdateApply").addEventListener("click", applyUpdate);
+    $("autoUpdate").addEventListener("change", async () => {
+      const res = await state.api.save_settings({ auto_update: $("autoUpdate").checked });
+      if (res.error) setStatus(res.error, true);
+    });
+    pollUpdate();                    // 시작 시 백그라운드 확인이 돌고 있으면 상태를 받아온다
+    setTimeout(pollUpdate, 4000);
   }
 
   // ───────────────────────── 3D 비행 재생 (flight3d.js)

@@ -128,3 +128,9 @@ td.st-fail { color: var(--fail); font-weight: 600; } td.st-warn { color: var(--w
 .empty3d { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 6; background: rgba(244,246,249,.9); color: var(--muted); font-size: 14px; }
 .wp3d { background: var(--primary); color: #fff; font-size: 11px; font-weight: 700; padding: 2px 6px; border-radius: 4px; border: 1px solid #fff; box-shadow: 0 1px 3px rgba(0,0,0,.4); }
 .wp3d.home { background: var(--ok); }
+
+/* ───── 자동 업데이트 배너 */
+.banner { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; background: #e8f1ff; border: 1px solid #b9d1f5; color: #173a6b; border-radius: 8px; padding: 8px 10px; margin: 0 0 10px; font-size: 12.5px; }
+.banner span { flex: 1 1 100%; }
+.tag-ok { background: #dff5e7; color: #136b3a; }
+.tag-err { background: #fde3e3; color: #8a1f1f; }

@@ -15,6 +15,7 @@ from .simulate import evaluate, load_profiles
 from .weather import WeatherError, fetch_weather
 from .weather_kma import check_kma_key
 from .weather_sources import SOURCE_LABELS, fetch_weather_by_source, normalize_source
+from .updater import Updater
 
 
 class Api:
@@ -23,6 +24,33 @@ class Api:
         # 밑줄로 시작해야 pywebview가 JS API로 노출하려고 .NET 창 객체를 재귀 탐색하지 않는다.
         self._window = None
         self._profiles = load_profiles()
+        from .updater import REPO as DEFAULT_REPO
+        self._updater = Updater(__version__, repo=config.get_update_repo(DEFAULT_REPO))
+
+    # ------------------------------------------------------------ 자동 업데이트
+    def update_status(self) -> dict[str, Any]:
+        return self._updater.status()
+
+    def check_update(self, download: bool = True) -> dict[str, Any]:
+        """백그라운드로 새 버전 확인(및 다운로드)을 시작하고 현재 상태를 돌려준다."""
+        self._updater.check_async(bool(download))
+        return self._updater.status()
+
+    def apply_update(self) -> dict[str, Any]:
+        """준비된 업데이트를 적용한다: 적용 스크립트를 분리 실행한 뒤 창을 닫고, 설치 후 다시 실행된다."""
+        res = self._updater.apply(relaunch=True)
+        if res.get("ok") and self._window is not None:
+            import threading
+            threading.Timer(0.5, self._window.destroy).start()
+        return res
+
+    def _apply_on_exit(self) -> None:
+        """창이 닫힐 때 호출: 자동 적용이 켜져 있고 준비된 업데이트가 있으면 조용히 설치(재실행 없음)."""
+        try:
+            if config.get_auto_update() and self._updater.status().get("can_apply"):
+                self._updater.apply(relaunch=False)
+        except Exception:
+            pass
 
     # ------------------------------------------------------------ 조회
     def get_profiles(self) -> list[dict[str, Any]]:
@@ -46,6 +74,7 @@ class Api:
             "kma_key_set": origin is not None,
             "kma_key_origin": origin,            # "env" | "config" | None
             "config_path": str(config.config_path()),
+            "auto_update": config.get_auto_update(),
         }
 
     def save_settings(self, settings: dict[str, Any]) -> dict[str, Any]:
@@ -57,6 +86,8 @@ class Api:
             if "kma_service_key" in settings:
                 key = str(settings["kma_service_key"] or "").strip()
                 changes[config.KEY_KMA] = key or None
+            if "auto_update" in settings:
+                changes[config.KEY_AUTO_UPDATE] = bool(settings["auto_update"])
             if changes:
                 config.update_config(**changes)
             return {"ok": True, **self.get_settings()}

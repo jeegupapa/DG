@@ -6,6 +6,7 @@ from pathlib import Path
 
 import webview
 
+from . import config
 from .api import Api
 
 
@@ -30,6 +31,10 @@ def run() -> None:
         text_select=True,
     )
     api._window = window
+    # 창이 닫힐 때 준비된 업데이트를 조용히 적용 (설정에서 끌 수 있음)
+    window.events.closing += api._apply_on_exit
+    if config.get_auto_update():
+        api._updater.check_async(download_update=True)
     webview.start(debug="--debug" in sys.argv, http_server=True)
 
 
