@@ -171,6 +171,7 @@
       if (res.error) { setStatus(res.error, true); if (res.trace) console.error(res.trace); return; }
       state.result = res;
       renderResult(res);
+      if (!$("view3d").classList.contains("hidden")) show3d(true);   // 3D 뷰가 열려 있으면 새 결과로 다시 재생
       const ws = res.weather_source || {};
       const fallback = ws.requested === "auto" && ws.used !== "kma" && ws.note && ws.note.includes("Open-Meteo");
       setStatus(`완료 · ${sourceLabel(res)} 자료 (${res.weather.timezone})${fallback ? " · 기상청 미사용: " + shortNote(ws.note) : ""}`);
@@ -442,6 +443,7 @@
     $("btnPlan").addEventListener("click", () => exportMission("plan"));
     $("btnWaypoints").addEventListener("click", () => exportMission("waypoints"));
     $("btnReport").addEventListener("click", saveReport);
+    setupView3D();
     $("rth").addEventListener("change", drawLines);
     $("vlos").addEventListener("change", drawLines);
     await loadSettings();
@@ -458,6 +460,76 @@
       document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.id === "tab-" + b.dataset.tab));
     }));
     renderWpTable();
+  }
+
+  // ───────────────────────── 3D 비행 재생 (flight3d.js)
+  let flight = null;
+
+  function show3d(on) {
+    $("view3d").classList.toggle("hidden", !on);
+    $("map").classList.toggle("hidden", on);
+    $("btnView2d").classList.toggle("active", !on);
+    $("btnView3d").classList.toggle("active", on);
+    if (!on) {
+      if (flight) { flight.pause(); updatePlayBtn(); }
+      setTimeout(() => map.invalidateSize(), 50);
+      return;
+    }
+    $("empty3d").classList.toggle("hidden", !!state.result);
+    if (!state.result) return;
+    if (typeof Flight3D === "undefined" || typeof maplibregl === "undefined") {
+      setStatus("3D 라이브러리를 불러오지 못했습니다. 인터넷 연결을 확인하세요.", true);
+      return;
+    }
+    if (!flight) {
+      flight = new Flight3D($("map3d"));
+      flight.onTick = onTick3d;
+      flight.onFollowChange = f => { $("follow3d").checked = f; };
+    }
+    flight.init().then(() => {
+      flight.resize();
+      if (flight.result !== state.result) flight.load(state.result);
+      flight.speed = Number($("speed3d").value);
+      flight.setFollow($("follow3d").checked);
+      flight.play();
+      updatePlayBtn();
+    }).catch(e => setStatus("3D 뷰 오류: " + e, true));
+  }
+
+  function updatePlayBtn() {
+    $("btnPlay3d").textContent = (flight && flight.playing) ? "⏸ 일시정지" : "▶ 재생";
+  }
+
+  function onTick3d(s) {
+    const seg = s.seg || {};
+    const wind = (seg.kind === "leg" || seg.kind === "return")
+      ? `${fmt.n1(seg.wind_speed_ms)} m/s ${fmt.dir(seg.wind_dir_deg)} (${seg.along_ms >= 0 ? "뒷" : "맞"}바람 ${fmt.n1(Math.abs(seg.along_ms))})`
+      : "-";
+    $("hud3d").innerHTML =
+      `<div class="hudseg">${seg.label || ""}</div>` +
+      `<div><span class="k">고도</span> ${s.alt.toFixed(0)} m <span class="muted">(지면 위 ${s.agl.toFixed(0)} m)</span></div>` +
+      `<div><span class="k">지상속도</span> ${s.groundSpeed.toFixed(1)} m/s · <span class="k">방위</span> ${Math.round(s.heading)}°</div>` +
+      `<div><span class="k">배터리</span> ${Math.round(s.battery * 100)}% 사용</div>` +
+      `<div><span class="k">바람</span> ${wind}</div>` +
+      (s.danger ? `<div class="danger">⚠ 지형과 간격 5 m 미만 · 고도 확인 필요</div>` : "") +
+      (s.done ? `<div class="muted">임무 종료</div>` : "");
+    $("time3d").textContent = `${Flight3D.fmtTime(s.t)} / ${Flight3D.fmtTime(s.total)}`;
+    if (document.activeElement !== $("seek3d")) $("seek3d").value = s.total > 0 ? Math.round(s.t / s.total * 1000) : 0;
+    if (s.done) updatePlayBtn();
+  }
+
+  function setupView3D() {
+    $("btnView2d").addEventListener("click", () => show3d(false));
+    $("btnView3d").addEventListener("click", () => show3d(true));
+    $("btnPlay3d").addEventListener("click", () => { if (!flight || !flight.track) return; flight.toggle(); updatePlayBtn(); });
+    $("btnReset3d").addEventListener("click", () => { if (!flight || !flight.track) return; flight.seek(0); flight.play(); updatePlayBtn(); });
+    $("speed3d").addEventListener("change", () => { if (flight) flight.speed = Number($("speed3d").value); });
+    $("follow3d").addEventListener("change", () => { if (flight) flight.setFollow($("follow3d").checked); });
+    $("seek3d").addEventListener("input", () => {
+      if (!flight || !flight.track) return;
+      flight.pause(); updatePlayBtn();
+      flight.seek(Number($("seek3d").value) / 1000 * flight.track.total);
+    });
   }
 
   init().catch(e => setStatus("초기화 실패: " + e, true));

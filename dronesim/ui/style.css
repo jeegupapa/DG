@@ -107,3 +107,24 @@ td.st-fail { color: var(--fail); font-weight: 600; } td.st-warn { color: var(--w
 .tag { display: inline-block; background: #fff3dc; color: #8a5a00; border-radius: 4px; padding: 1px 6px; font-size: 11px; margin-left: 6px; vertical-align: middle; }
 
 #wxSource { white-space: pre-line; }
+
+/* ───── 2D/3D 전환과 3D 비행 뷰 */
+.mapwrap { position: relative; height: 100%; min-height: 300px; }
+.mapwrap > #map, #view3d, #map3d { position: absolute; inset: 0; }
+#map3d { background: #dfe6ee; }
+.viewtoggle { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 1100; display: flex; background: #fff; border-radius: 8px; box-shadow: 0 1px 6px rgba(0,0,0,.25); overflow: hidden; }
+.viewtoggle button { border: 0; border-radius: 0; padding: 7px 14px; background: #fff; color: var(--muted); font-weight: 600; }
+.viewtoggle button.active { background: var(--primary); color: #fff; }
+.hud3d { position: absolute; top: 56px; left: 12px; z-index: 5; background: rgba(255,255,255,.93); border-radius: 8px; padding: 10px 12px; font-size: 12.5px; line-height: 1.7; min-width: 230px; box-shadow: 0 1px 6px rgba(0,0,0,.2); }
+.hud3d:empty { display: none; }
+.hud3d .hudseg { font-weight: 700; color: var(--primary); margin-bottom: 2px; }
+.hud3d .k { color: var(--muted); margin-right: 4px; }
+.hud3d .danger { color: var(--fail); font-weight: 700; }
+.ctl3d { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); z-index: 5; display: flex; gap: 8px; align-items: center; background: rgba(255,255,255,.95); padding: 8px 12px; border-radius: 10px; box-shadow: 0 1px 6px rgba(0,0,0,.25); white-space: nowrap; }
+.ctl3d input[type=range] { width: 220px; }
+.ctl3d select { padding: 4px 6px; }
+.ctl3d .follow { flex-direction: row; align-items: center; gap: 4px; margin: 0; color: var(--text); }
+.mono { font-variant-numeric: tabular-nums; font-size: 12.5px; }
+.empty3d { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 6; background: rgba(244,246,249,.9); color: var(--muted); font-size: 14px; }
+.wp3d { background: var(--primary); color: #fff; font-size: 11px; font-weight: 700; padding: 2px 6px; border-radius: 4px; border: 1px solid #fff; box-shadow: 0 1px 3px rgba(0,0,0,.4); }
+.wp3d.home { background: var(--ok); }

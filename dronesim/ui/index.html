@@ -6,6 +6,7 @@
   <title>드론 임무 시뮬레이터</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
         integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.css">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -98,7 +99,29 @@
   </aside>
 
   <!-- ───────────── 가운데: 지도 ───────────── -->
-  <main id="map"></main>
+  <main class="mapwrap">
+    <div class="viewtoggle">
+      <button id="btnView2d" class="active">2D 지도</button>
+      <button id="btnView3d">3D 비행</button>
+    </div>
+    <div id="map"></div>
+    <div id="view3d" class="hidden">
+      <div id="map3d"></div>
+      <div id="hud3d" class="hud3d"></div>
+      <div class="ctl3d">
+        <button id="btnPlay3d">▶ 재생</button>
+        <button id="btnReset3d" title="처음부터">⟲</button>
+        <input id="seek3d" type="range" min="0" max="1000" value="0">
+        <span id="time3d" class="mono">00:00 / 00:00</span>
+        <select id="speed3d" title="재생 속도">
+          <option value="1">1×</option><option value="2">2×</option><option value="5" selected>5×</option>
+          <option value="10">10×</option><option value="30">30×</option>
+        </select>
+        <label class="follow"><input id="follow3d" type="checkbox" checked> 드론 추적</label>
+      </div>
+      <div id="empty3d" class="empty3d hidden">먼저 왼쪽에서 <b>시뮬레이션 실행</b>을 누르면 그 결과로 3D 비행을 재생합니다.</div>
+    </div>
+  </main>
 
   <!-- ───────────── 오른쪽: 결과 ───────────── -->
   <aside class="panel right">
@@ -165,6 +188,8 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
         integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script src="https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.js"></script>
+<script src="flight3d.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

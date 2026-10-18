@@ -79,6 +79,8 @@ class Segment:
     cross_ms: float = 0.0
     status: str = OK
     note: str = ""
+    from_pos: list[float] | None = None   # [lat, lon, alt_m] 구간 시작 위치 (3D 재생용)
+    to_pos: list[float] | None = None     # [lat, lon, alt_m] 구간 종료 위치
 
 
 @dataclass
@@ -171,7 +173,8 @@ def run_mission(mission: MissionInput, profile: AircraftProfile, weather: Weathe
 
     # 이륙
     climb_t = home.alt_m / profile.climb_rate_ms if profile.climb_rate_ms > 0 else 0.0
-    add(Segment("takeoff", f"이륙 → {home.alt_m:.0f} m", 0.0, climb_t, p_climb * climb_t / 3600.0, 0.0))
+    add(Segment("takeoff", f"이륙 → {home.alt_m:.0f} m", 0.0, climb_t, p_climb * climb_t / 3600.0, 0.0,
+                from_pos=[home.lat, home.lon, 0.0], to_pos=[home.lat, home.lon, home.alt_m]))
 
     def leg(frm: Waypoint, to: Waypoint, label: str, kind: str) -> None:
         nonlocal control_fail
@@ -194,24 +197,28 @@ def run_mission(mission: MissionInput, profile: AircraftProfile, weather: Weathe
                 status, note = WARN, "맞바람으로 지상속도 크게 감소"
         time_s = max(horiz_t, vert_t)
         energy = (p_cruise * horiz_t + (p_climb if dalt > 0 else p_desc) * max(0.0, vert_t - horiz_t)) / 3600.0
-        add(Segment(kind, label, d, time_s, energy, 0.0, gs, wspd, wdir, along, cross, status, note))
+        add(Segment(kind, label, d, time_s, energy, 0.0, gs, wspd, wdir, along, cross, status, note,
+                    from_pos=[frm.lat, frm.lon, frm.alt_m], to_pos=[to.lat, to.lon, to.alt_m]))
 
     for i, wp in enumerate(mission.waypoints):
         if i > 0:
             leg(mission.waypoints[i - 1], wp, f"WP{i} → WP{i + 1}", "leg")
         if wp.hover_s > 0:
             add(Segment("hover", f"WP{i + 1} 체공 {wp.hover_s:.0f} s", 0.0, wp.hover_s,
-                        p_hover * wp.hover_s / 3600.0, 0.0))
+                        p_hover * wp.hover_s / 3600.0, 0.0,
+                        from_pos=[wp.lat, wp.lon, wp.alt_m], to_pos=[wp.lat, wp.lon, wp.alt_m]))
 
     if mission.return_to_home and len(mission.waypoints) > 1:
         last = mission.waypoints[-1]
         rth = Waypoint(home.lat, home.lon, last.alt_m, 0.0)
         leg(last, rth, f"WP{len(mission.waypoints)} → 출발지 복귀", "return")
-        land_alt = last.alt_m
+        land_pt = rth
     else:
-        land_alt = mission.waypoints[-1].alt_m
+        land_pt = mission.waypoints[-1]
+    land_alt = land_pt.alt_m
     desc_t = land_alt / profile.descent_rate_ms if profile.descent_rate_ms > 0 else 0.0
-    add(Segment("land", "착륙", 0.0, desc_t, p_desc * desc_t / 3600.0, 0.0))
+    add(Segment("land", "착륙", 0.0, desc_t, p_desc * desc_t / 3600.0, 0.0,
+                from_pos=[land_pt.lat, land_pt.lon, land_alt], to_pos=[land_pt.lat, land_pt.lon, 0.0]))
 
     max_dist_home = max((haversine_m(home.lat, home.lon, w.lat, w.lon) for w in mission.waypoints), default=0.0)
     max_alt = max(w.alt_m for w in mission.waypoints)

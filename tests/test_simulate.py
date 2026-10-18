@@ -113,3 +113,19 @@ def test_archive_weather_marks_visibility_info(profiles, short_mission):
     r = run_mission(short_mission, profiles["quad500"], make_weather(source="archive"))
     assert check(r, "vis").status == "info"
     assert r.overall == OK
+
+
+def test_segments_carry_positions_for_3d_playback(profiles, short_mission, calm_weather):
+    r = run_mission(short_mission, profiles["quad500"], calm_weather)
+    home = short_mission.waypoints[0]
+    for s in r.segments:
+        assert s.from_pos is not None and s.to_pos is not None and len(s.from_pos) == 3
+    assert r.segments[0].from_pos == [home.lat, home.lon, 0.0]
+    assert r.segments[0].to_pos == [home.lat, home.lon, home.alt_m]
+    ret = next(s for s in r.segments if s.kind == "return")
+    assert ret.to_pos[:2] == [home.lat, home.lon]
+    land = r.segments[-1]
+    assert land.from_pos[:2] == [home.lat, home.lon] and land.to_pos[2] == 0.0
+    # 구간은 시간순으로 이어진다
+    for a, b in zip(r.segments, r.segments[1:]):
+        assert abs((a.start_s + a.time_s) - b.start_s) < 1e-6

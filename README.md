@@ -19,6 +19,9 @@ Windows 데스크톱 프로그램입니다. 비행제어 코드가 아닌 **임�
 - 임무 조건에 따른 필요 하드웨어 목록 (규칙 기반, `dronesim/data/hardware_rules.json`)
 - QGroundControl `.plan`, Mission Planner `.waypoints` 내보내기 → 1차 개발(SITL/실기체)에 그대로 사용
 - 임무 저장/불러오기, 텍스트 보고서 저장
+- **3D 비행 재생**: 지도 위 "3D 비행" 버튼으로 전환. 3D 지형(AWS Terrain Tiles)과 건물(OpenFreeMap) 위에
+  경로를 비행 고도까지 세운 반투명 커튼과 드론 마커를 그리고, 시뮬레이션 결과의 구간별 시간·지상속도대로 재생
+  (재생/일시정지, 1~30배속, 시간 탐색, 드론 추적 카메라, 고도·지상속도·배터리·바람 HUD, 지형 간격 5 m 미만 경고)
 
 ## 실행
 
