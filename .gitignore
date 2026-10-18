@@ -9,3 +9,4 @@ installer/payload/
 installer/*.sed
 docs/*.zip
 docs/*.pdf
+docs/
