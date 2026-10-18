@@ -7,3 +7,5 @@ dist/
 *.spec
 installer/payload/
 installer/*.sed
+docs/*.zip
+docs/*.pdf
