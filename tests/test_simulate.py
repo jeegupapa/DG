@@ -129,3 +129,42 @@ def test_segments_carry_positions_for_3d_playback(profiles, short_mission, calm_
     # 구간은 시간순으로 이어진다
     for a, b in zip(r.segments, r.segments[1:]):
         assert abs((a.start_s + a.time_s) - b.start_s) < 1e-6
+
+
+def test_failure_events_battery_and_control(profiles, calm_weather):
+    # 긴 경로: 가용 용량을 넘는 지점에서 배터리 소진 사건
+    m = MissionInput.from_dict({
+        "waypoints": [{"lat": 36.35, "lon": 127.38, "alt_m": 50}, {"lat": 36.42, "lon": 127.38, "alt_m": 50}],
+        "date": "2026-10-18", "time": "10:00", "profile_id": "quad500", "vlos": False,
+    })
+    r = run_mission(m, profiles["quad500"], calm_weather)
+    kinds = [e["kind"] for e in r.failure_events]
+    assert "battery" in kinds
+    ev = next(e for e in r.failure_events if e["kind"] == "battery")
+    assert 0 < ev["t"] < r.total_time_s and ev["mode"] == "land"
+    assert 36.35 <= ev["lat"] <= 36.42 and abs(ev["lon"] - 127.38) < 1e-6 and ev["alt"] == 50
+    # 사건 시점까지의 누적 에너지가 가용 용량과 같다
+    used = 0.0
+    for s in r.segments:
+        end = s.start_s + s.time_s
+        if end <= ev["t"]:
+            used += s.energy_wh
+        else:
+            used += s.energy_wh * (ev["t"] - s.start_s) / s.time_s
+            break
+    assert abs(used - r.usable_wh) < 0.5
+
+    # 강한 맞바람: 복귀 구간 시작에서 제어 불능 사건
+    m2 = MissionInput.from_dict({
+        "waypoints": [{"lat": 36.35, "lon": 127.38, "alt_m": 50}, {"lat": 36.35, "lon": 127.40, "alt_m": 50}],
+        "date": "2026-10-18", "time": "10:00", "profile_id": "quad500",
+    })
+    r2 = run_mission(m2, profiles["quad500"], make_weather(wind10=5.0, wind_alt=9.0, wind_dir=270.0, gust=9.0))
+    ctl = next(e for e in r2.failure_events if e["kind"] == "control")
+    ret = next(s for s in r2.segments if s.kind == "return")
+    assert abs(ctl["t"] - ret.start_s) < 1e-6 and ctl["lat"] == ret.from_pos[0]
+
+
+def test_no_failure_events_on_short_calm_mission(profiles, short_mission, calm_weather):
+    r = run_mission(short_mission, profiles["quad500"], calm_weather)
+    assert r.failure_events == []

@@ -108,6 +108,42 @@ class MissionRun:
     end_time: str
     overall: str
     failures: list[str] = field(default_factory=list)
+    # 비행 중 발생하는 고장 사건(3D 재생용): 배터리 소진, 제어 불능. 각 항목은
+    # {kind, mode('land'|'crash'), t, lat, lon, alt, label, detail}
+    failure_events: list[dict] = field(default_factory=list)
+
+
+def failure_events_for(segs: list[Segment], usable_wh: float) -> list[dict]:
+    """세그먼트 열에서 비행 중 고장 사건의 시점·위치를 구한다.
+
+    - 배터리 소진: 누적 에너지가 가용 용량을 넘는 순간(구간 안에서 선형 보간) → 그 자리에서 비상 착륙
+    - 제어 불능: 경로 유지 불가(FAIL) 구간의 시작점 → 그 자리에서 비상 착륙
+    """
+    events: list[dict] = []
+    e = 0.0
+    battery_done = False
+    control_done = False
+    for s in segs:
+        if s.from_pos is None or s.to_pos is None:
+            e += s.energy_wh
+            continue
+        if not battery_done and usable_wh > 0 and e + s.energy_wh > usable_wh and s.energy_wh > 0:
+            f = max(0.0, min(1.0, (usable_wh - e) / s.energy_wh))
+            lat = s.from_pos[0] + (s.to_pos[0] - s.from_pos[0]) * f
+            lon = s.from_pos[1] + (s.to_pos[1] - s.from_pos[1]) * f
+            alt = s.from_pos[2] + (s.to_pos[2] - s.from_pos[2]) * f
+            events.append({"kind": "battery", "mode": "land", "t": s.start_s + s.time_s * f,
+                           "lat": lat, "lon": lon, "alt": alt, "label": "배터리 소진",
+                           "detail": f"{s.label} 구간에서 가용 용량 소진 → 비상 착륙"})
+            battery_done = True
+        if not control_done and s.status == FAIL:
+            events.append({"kind": "control", "mode": "land", "t": s.start_s,
+                           "lat": s.from_pos[0], "lon": s.from_pos[1], "alt": s.from_pos[2], "label": "제어 불능",
+                           "detail": f"{s.label}: {s.note or '경로 유지 불가'} → 비상 착륙"})
+            control_done = True
+        e += s.energy_wh
+    events.sort(key=lambda x: x["t"])
+    return events
 
 
 def _parse_local(date: str, time: str) -> dt.datetime:
@@ -342,6 +378,7 @@ def run_mission(mission: MissionInput, profile: AircraftProfile, weather: Weathe
         max_dist_home_m=max_dist_home, max_alt_m=max_alt,
         start_time=start.isoformat(timespec="minutes"), end_time=end.isoformat(timespec="minutes"),
         overall=overall, failures=failures,
+        failure_events=failure_events_for(segs, usable_wh),
     )
 
 

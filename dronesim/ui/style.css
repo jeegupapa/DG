@@ -389,3 +389,10 @@ td.st-ok, td.st-info { font-family: var(--sans); }
 .szdetails[open] summary::before { content: "▾ "; }
 .reasons.small li { font-size: 10.5px; color: var(--sub); }
 table.grid td.szspec { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+/* ───── 3D 장애물·추락 표식 */
+.obs3d, .crash3d { font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 4px; border: 1px solid #fff; box-shadow: 0 1px 3px rgba(0,0,0,.4); white-space: nowrap; color: #fff; }
+.obs3d.fail, .crash3d.fail { background: var(--crit, #c0392b); }
+.obs3d.warn, .crash3d.warn { background: var(--warn, #b8791a); }
+.crash3d { font-size: 12px; padding: 4px 9px; }
+.hud3d .warn3d { color: var(--warn, #b8791a); font-weight: 700; }

@@ -38,6 +38,15 @@
     return [c.map(([a, b]) => offset(lat, lon, ux * a + vx * b, uy * a + vy * b))];
   }
   function fmtTime(s) { const m = Math.floor(s / 60), r = Math.floor(s % 60); return `${String(m).padStart(2, "0")}:${String(r).padStart(2, "0")}`; }
+  /** 점이 폴리곤 외곽 링 안에 있는지 (ray casting) */
+  function pointInRing(x, y, ring) {
+    let inside = false;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const xi = ring[i][0], yi = ring[i][1], xj = ring[j][0], yj = ring[j][1];
+      if (((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi)) inside = !inside;
+    }
+    return inside;
+  }
 
   // ─────────────────────── 비행 궤적
   class Track {
@@ -56,8 +65,23 @@
       this.home = this.keys.length ? this.keys[0].a : [0, 0, 0];
       this.maxAlt = Math.max(1, ...this.keys.map(k => Math.max(k.a[2], k.b[2])));
       this._heading = 0;
+      // 고장 사건: 파이썬이 계산한 배터리 소진·제어 불능(비상 착륙) + 3D 검사·재생 중 감지한 충돌(추락)
+      this.descentRate = (result.profile && result.profile.descent_rate_ms) || 2;
+      this.failures = (result.nominal.failure_events || []).map(f => ({ ...f }));
+      this.enabled = true;
     }
-    at(t) {
+    addFailure(f) { this.failures.push(f); this.failures.sort((a, b) => a.t - b.t); }
+    removeCollisions() { this.failures = this.failures.filter(f => f.kind !== "terrain" && f.kind !== "building"); }
+    /** t 시점에 이미 발생한 가장 이른 고장 사건 (없으면 null) */
+    activeFailure(t) {
+      if (!this.enabled) return null;
+      let best = null;
+      for (const f of this.failures) if (f.t <= t && (!best || f.t < best.t)) best = f;
+      return best;
+    }
+    firstFailure() { return this.activeFailure(Infinity); }
+    /** 계획 경로상의 상태 (고장 무시) */
+    baseAt(t) {
       t = Math.max(0, Math.min(t, this.total));
       let k = this.keys[this.keys.length - 1];
       for (const kk of this.keys) { if (t <= kk.t1) { k = kk; break; } }
@@ -69,11 +93,34 @@
         t, lat, lon, alt, heading: this._heading, seg: k.seg,
         groundSpeed: k.horiz ? (k.seg.ground_speed_ms || 0) : 0, vspeed,
         battery: (k.e0 + (k.e1 - k.e0) * f) / this.usable,
-        done: t >= this.total,
+        done: t >= this.total, phase: "normal", failure: null,
       };
     }
-    /** 지금까지 지나온 지면 궤적 좌표 */
+    /** 고장을 반영한 상태: 추락은 자유낙하, 비상 착륙은 하강률로 제자리 하강. 지면(groundRel)에 닿으면 종료 */
+    at(t) {
+      const F = this.activeFailure(t);
+      if (!F) return this.baseAt(t);
+      const s0 = this.baseAt(F.t);
+      const groundRel = typeof F.groundRel === "number" ? F.groundRel : 0;
+      const dt = Math.max(0, t - F.t);
+      const drop = F.mode === "crash" ? 0.5 * 9.81 * dt * dt : this.descentRate * dt;
+      const alt = Math.max(groundRel, s0.alt - drop);
+      const ended = alt <= groundRel + 1e-6;
+      return { ...s0, t, alt, groundSpeed: 0, vspeed: ended ? 0 : -(F.mode === "crash" ? 9.81 * dt : this.descentRate),
+               phase: ended ? "ended" : "emergency", failure: F, done: ended };
+    }
+    /** 재생이 끝나는 시각: 고장이 있으면 지면에 닿는 순간 */
+    endTime() {
+      const F = this.firstFailure();
+      if (!F) return this.total;
+      const s0 = this.baseAt(F.t);
+      const h = Math.max(0, s0.alt - (typeof F.groundRel === "number" ? F.groundRel : 0));
+      return F.t + (F.mode === "crash" ? Math.sqrt(2 * h / 9.81) : h / this.descentRate);
+    }
+    /** 지금까지 지나온 지면 궤적 좌표 (고장 시점 이후로는 늘어나지 않음) */
     trail(t) {
+      const F = this.firstFailure();
+      if (F && t > F.t) t = F.t;
       const pts = [];
       for (const k of this.keys) {
         if (!k.horiz) continue;
@@ -98,6 +145,10 @@
       this.cam = null; this.camReady = false; this.camEl = null; this.hudCanvas = null;
       this.camOn = true; this.camPaused = false; this.gimbalPitch = -30; this.camZoom = 1;
       this._camFov = null; this._camWpMarkers = []; this._camState = null;
+      // 고장·충돌 시뮬레이션: 경로 사전 검사(지형·건물)와 재생 중 감지
+      this.failSim = true; this.onScan = null;   // onScan({conflicts, buildings}) => void
+      this._obstacleMarkers = []; this._crashMarker = null; this._scan = null; this._scanTries = 0;
+      this._bCache = { t: 0, list: [] };
     }
 
     init() {
@@ -373,6 +424,135 @@
       if (wps.length === 1) b.extend(offset(home[0], home[1], 150, 150)).extend(offset(home[0], home[1], -150, -150));
       this.map.fitBounds(b, { padding: 80, pitch: 55, bearing: 0, duration: 0, maxZoom: 17 });
       this._camLoad();
+      // 고장·충돌: 이전 결과의 마커를 지우고, 지형·건물 타일이 로드된 뒤(idle) 경로를 검사한다
+      this.track.enabled = this.failSim;
+      this._clearObstacleMarkers();
+      this._scan = null; this._scanTries = 0;
+      this._scheduleScan(400);
+      this.update();
+    }
+    /** 추적 카메라가 움직이는 동안 지도는 idle 이 되지 않으므로, 이벤트 대신 주기적으로 타일 로드를 확인해 검사한다 */
+    _scheduleScan(delay) {
+      if (this._scanTimer) clearTimeout(this._scanTimer);
+      const token = this.track;
+      this._scanTimer = setTimeout(() => {
+        this._scanTimer = null;
+        if (!this.map || this.track !== token) return;          // 그 사이 다른 결과가 로드됨
+        this._runScan();
+      }, delay);
+    }
+
+    // ─────────────────────── 장애물 검사 (지형·건물)
+    _clearObstacleMarkers() {
+      this._obstacleMarkers.forEach(m => m.remove()); this._obstacleMarkers = [];
+      if (this._crashMarker) { this._crashMarker.remove(); this._crashMarker = null; }
+    }
+    /** 현재 로드된 건물 폴리곤(외곽 링·bbox·높이). 2초 캐시 */
+    _loadedBuildings(force) {
+      const now = performance.now();
+      if (!force && now - this._bCache.t < 2000) return this._bCache.list;
+      const out = [];
+      try {
+        if (this.map.getSource("ofm")) {
+          for (const f of this.map.querySourceFeatures("ofm", { sourceLayer: "building" })) {
+            const p = f.properties || {};
+            const h = Number(p.render_height != null ? p.render_height : p.height) || 8;
+            const g = f.geometry; if (!g) continue;
+            const polys = g.type === "Polygon" ? [g.coordinates] : g.type === "MultiPolygon" ? g.coordinates : [];
+            for (const rings of polys) {
+              const ring = rings[0]; if (!ring || ring.length < 3) continue;
+              let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+              for (const [x, y] of ring) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+              out.push({ ring, bbox: [x0, y0, x1, y1], height: h });
+            }
+          }
+        }
+      } catch (_) { /* 건물 소스가 없거나 아직 로드 전 */ }
+      this._bCache = { t: now, list: out };
+      return out;
+    }
+    _tallestBuildingAt(buildings, lat, lon) {
+      let best = null;
+      for (const b of buildings) {
+        const [x0, y0, x1, y1] = b.bbox;
+        if (lon < x0 || lon > x1 || lat < y0 || lat > y1) continue;
+        if (pointInRing(lon, lat, b.ring) && (!best || b.height > best.height)) best = b;
+      }
+      return best;
+    }
+    _runScan() {
+      if (!this.track || !this.ready) return;
+      const tries = this._scanTries++;
+      let tilesReady = true;
+      try { tilesReady = this.map.areTilesLoaded(); } catch (_) { /* 무시 */ }
+      // 지형·건물 타일이 아직 로드 중이면 잠시 뒤 다시 (최대 20초), 그 뒤에는 있는 자료로 검사
+      if (!tilesReady && tries < 20) { this._scheduleScan(1000); return; }
+      const res = this.scanObstacles();
+      if (!res) { if (tries < 20) this._scheduleScan(1000); return; }          // 출발지 지형 고도 미확정
+      // 건물 소스가 있는데 아직 한 건도 로드되지 않았으면 5초 뒤 한 번 더 검사해 늦게 온 타일을 반영
+      if (res.buildings === 0 && this.map.getSource("ofm") && tries < 20) this._scheduleScan(5000);
+    }
+    /** 경로를 10 m 간격으로 훑어 지형·건물 충돌(불가)과 10 m 미만 근접(주의)을 찾는다. 첫 충돌은 추락 사건으로 등록 */
+    scanObstacles() {
+      const homeElev = this._elev(this.track.home[0], this.track.home[1]);
+      if (homeElev == null || homeElev === 0) return null;
+      this._homeElev = homeElev;
+      const buildings = this._loadedBuildings(true);
+      const STEP = 10, conflicts = [];
+      let cur = null;
+      for (const k of this.track.keys) {
+        if (!k.horiz) { cur = null; continue; }
+        const d = distance(k.a, k.b), n = Math.max(1, Math.ceil(d / STEP));
+        for (let i = 0; i <= n; i++) {
+          const f = i / n;
+          const lat = k.a[0] + (k.b[0] - k.a[0]) * f, lon = k.a[1] + (k.b[1] - k.a[1]) * f, alt = k.a[2] + (k.b[2] - k.a[2]) * f;
+          const t = k.t0 + (k.t1 - k.t0) * f;
+          const elev = this._elev(lat, lon);
+          if (elev == null) { cur = null; continue; }
+          const absAlt = homeElev + alt, agl = absAlt - elev;
+          let hit = null;
+          if (agl <= 0.5) hit = { kind: "terrain", level: "fail", label: "지형 충돌", detail: `지면보다 ${Math.max(0, -agl).toFixed(0)} m 아래`, clearance: agl };
+          else {
+            const b = this._tallestBuildingAt(buildings, lat, lon);
+            if (b) {
+              const clr = absAlt - (elev + b.height);
+              if (clr <= 0) hit = { kind: "building", level: "fail", label: "건물 충돌", detail: `건물 높이 ${b.height.toFixed(0)} m, 비행 고도보다 ${(-clr).toFixed(0)} m 높음`, clearance: clr };
+              else if (clr < 10) hit = { kind: "building", level: "warn", label: "건물 근접", detail: `건물 위 ${clr.toFixed(0)} m`, clearance: clr };
+            }
+            if (!hit && agl < 10) hit = { kind: "terrain", level: "warn", label: "지형 근접", detail: `지면 위 ${agl.toFixed(0)} m`, clearance: agl };
+          }
+          if (!hit) { cur = null; continue; }
+          if (cur && cur.kind === hit.kind && cur.level === hit.level) {
+            if (hit.clearance < cur.clearance) Object.assign(cur, { detail: hit.detail, clearance: hit.clearance });
+            cur.tEnd = t;
+          } else {
+            cur = { ...hit, t, tEnd: t, lat, lon, alt, elev, segLabel: k.seg.label };
+            conflicts.push(cur);
+          }
+        }
+      }
+      // 첫 충돌 지점을 추락 사건으로 등록 (이전 검사 결과는 교체)
+      this.track.removeCollisions();
+      const first = conflicts.find(c => c.level === "fail");
+      if (first) this.track.addFailure({ kind: first.kind, mode: "crash", t: first.t, lat: first.lat, lon: first.lon, alt: first.alt,
+                                         label: first.label, detail: first.detail, groundRel: first.elev - homeElev });
+      // 마커
+      this._obstacleMarkers.forEach(m => m.remove()); this._obstacleMarkers = [];
+      for (const c of conflicts) {
+        const el = document.createElement("div");
+        el.className = "obs3d " + c.level;
+        el.textContent = (c.level === "fail" ? "✕ " : "⚠ ") + c.label;
+        el.title = `${c.segLabel} · ${c.detail}`;
+        this._obstacleMarkers.push(new maplibregl.Marker({ element: el, anchor: "bottom" }).setLngLat([c.lon, c.lat]).addTo(this.map));
+      }
+      this._scan = { conflicts, buildings: buildings.length, homeElev };
+      if (this.onScan) this.onScan(this._scan);
+      return this._scan;
+    }
+    setFailSim(on) {
+      this.failSim = !!on;
+      if (this.track) this.track.enabled = this.failSim;
+      if (!this.failSim && this._crashMarker) { this._crashMarker.remove(); this._crashMarker = null; }
       this.update();
     }
 
@@ -391,10 +571,16 @@
       } catch (_) { return null; }
     }
 
-    play() { if (!this.track) return; if (this.t >= this.track.total) this.t = 0; this.playing = true; this._last = null; if (!this._raf) this._raf = requestAnimationFrame(ts => this._frame(ts)); }
+    _end() { return this.track ? Math.max(this.track.total, this.track.endTime()) : 0; }
+    play() {
+      if (!this.track) return;
+      if (this.t >= this.track.endTime() - 1e-6) { this.t = 0; if (this._crashMarker) { this._crashMarker.remove(); this._crashMarker = null; } }
+      this.playing = true; this._last = null;
+      if (!this._raf) this._raf = requestAnimationFrame(ts => this._frame(ts));
+    }
     pause() { this.playing = false; }
     toggle() { this.playing ? this.pause() : this.play(); }
-    seek(t) { this.t = Math.max(0, Math.min(t, this.track ? this.track.total : 0)); this.update(); }
+    seek(t) { this.t = Math.max(0, Math.min(t, this._end())); if (this._crashMarker && this.t < this.track.endTime()) { this._crashMarker.remove(); this._crashMarker = null; } this.update(); }
     setFollow(on) { this.follow = on; if (on) this.update(); }
 
     _frame(ts) {
@@ -402,27 +588,53 @@
       if (!this.playing) return;
       if (this._last != null) this.t += (ts - this._last) / 1000 * this.speed;
       this._last = ts;
-      if (this.t >= this.track.total) { this.t = this.track.total; this.playing = false; }
+      const end = this.track.endTime();
+      if (this.t >= end) { this.t = end; this.playing = false; }
       this.update();
       if (this.playing) this._raf = requestAnimationFrame(t2 => this._frame(t2));
     }
 
     update() {
       if (!this.track || !this.ready) return;
-      const st = this.track.at(this.t);
       const zoom = this.map.getZoom();
       const size = Math.max(2.5, 70 / Math.pow(2, zoom - 13));            // 화면에서 보이는 크기로 보정
       // 출발지 지형 고도는 타일이 늦게 로드될 수 있어 유효값이 나올 때까지 매 프레임 다시 읽는다
       const he = this._elev(this.track.home[0], this.track.home[1]);
       if (he != null && he !== 0) this._homeElev = he;
       const homeElev = this._homeElev;
-      const localElev = homeElev == null ? null : this._elev(st.lat, st.lon);
+      // 파이썬이 계산한 고장 사건(배터리·제어)은 지면 상대고도를 모르므로 처음 활성화될 때 지형에서 읽어 둔다
+      const F0 = this.track.activeFailure(this.t);
+      if (F0 && typeof F0.groundRel !== "number" && homeElev != null) { const e0 = this._elev(F0.lat, F0.lon); if (e0 != null) F0.groundRel = e0 - homeElev; }
+      let st = this.track.at(this.t);
+      let localElev = homeElev == null ? null : this._elev(st.lat, st.lon);
+      let agl = localElev != null && homeElev != null ? st.alt + homeElev - localElev : st.alt;
+      // 재생 중 충돌 감지(사전 검사에서 놓친 경우의 보조): 지면 아래로 내려가거나 건물 안으로 들어가면 그 자리에서 추락
+      if (this.failSim && st.phase === "normal" && st.t > 0 && localElev != null && st.seg.kind !== "takeoff" && st.seg.kind !== "land") {
+        let hit = null;
+        if (agl <= 0.3) hit = { kind: "terrain", label: "지형 충돌", detail: "비행 고도가 지면보다 낮음" };
+        else {
+          const b = this._tallestBuildingAt(this._loadedBuildings(false), st.lat, st.lon);
+          if (b && homeElev + st.alt < localElev + b.height) hit = { kind: "building", label: "건물 충돌", detail: `건물 높이 ${b.height.toFixed(0)} m` };
+        }
+        if (hit) {
+          this.track.addFailure({ ...hit, mode: "crash", t: st.t, lat: st.lat, lon: st.lon, alt: st.alt, groundRel: localElev - homeElev });
+          st = this.track.at(this.t);
+        }
+      }
       // 고도는 출발지 기준 상대고도. 지형 위에 그려지므로 지형 높이 차이를 보정한다.
       const corr = (homeElev != null && localElev != null) ? homeElev - localElev : 0;
       const base = Math.max(0, st.alt + corr);
-      const agl = localElev != null && homeElev != null ? st.alt + homeElev - localElev : st.alt;
-      const danger = agl < 5 && st.seg.kind !== "takeoff" && st.seg.kind !== "land" && st.t > 0;
-      const color = danger ? CRIT : ACCENT;
+      agl = localElev != null && homeElev != null ? st.alt + homeElev - localElev : st.alt;
+      const danger = st.phase === "normal" && agl < 5 && st.seg.kind !== "takeoff" && st.seg.kind !== "land" && st.t > 0;
+      const F = st.failure;
+      const color = F ? (F.mode === "crash" ? CRIT : STATUS_COLOR.warn) : (danger ? CRIT : ACCENT);
+      // 추락·비상 착륙이 끝나면 그 자리에 표식을 남긴다
+      if (F && st.phase === "ended" && !this._crashMarker) {
+        const el = document.createElement("div");
+        el.className = "crash3d " + (F.mode === "crash" ? "fail" : "warn");
+        el.textContent = (F.mode === "crash" ? "✕ 추락 · " : "비상 착륙 · ") + F.label;
+        this._crashMarker = new maplibregl.Marker({ element: el, anchor: "bottom" }).setLngLat([st.lon, st.lat]).addTo(this.map);
+      }
 
       const arms = [
         { type: "Feature", properties: { color, h: base + size * 0.25, b: base }, geometry: { type: "Polygon", coordinates: rect(st.lat, st.lon, st.heading + 45, size * 1.6, size * 0.28) } },
@@ -441,11 +653,12 @@
         this.map.jumpTo({ center: [st.lon, st.lat], bearing: st.heading, pitch: 62, zoom: this.followZoom });
       }
       this._updateCam(st, agl, localElev, danger);     // 추적 카메라와 무관하게 PiP 는 항상 드론 시점
-      if (this.onTick) this.onTick({ ...st, agl, danger, total: this.track.total, localElev, homeElev });
+      if (this.onTick) this.onTick({ ...st, agl, danger, total: this.track.total, endTime: this.track.endTime(), localElev, homeElev });
     }
 
     destroy() {
       this.pause();
+      this._clearObstacleMarkers();
       if (this.cam) { this.cam.remove(); this.cam = null; this.camReady = false; }
       if (this.map) { this.map.remove(); this.map = null; this.ready = false; }
     }

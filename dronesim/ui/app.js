@@ -705,10 +705,12 @@
       flight = new Flight3D($("map3d"));
       window.__flight3d = flight;   // 진단용(개발자 도구·자동 점검에서 상태 확인)
       flight.onTick = onTick3d;
+      flight.onScan = onScan3d;
       flight.onFollowChange = f => { $("follow3d").checked = f; };
     }
     flight.init().then(() => {
       flight.resize();
+      flight.failSim = $("failSim").checked;
       if (flight.result !== state.result) flight.load(state.result);
       flight.speed = currentSpeed();
       flight.setFollow($("follow3d").checked);
@@ -821,10 +823,46 @@
       `<div><span class="k">배터리</span><span class="v">${Math.round(s.battery * 100)}</span>% 사용</div>` +
       `<div><span class="k">바람</span>${wind}</div>` +
       (s.danger ? `<div class="danger">⚠ 지형과 간격 5 m 미만 · 고도 확인 필요</div>` : "") +
-      (s.done ? `<div class="muted">임무 종료</div>` : "");
+      failureLine(s) +
+      (s.done && !s.failure ? `<div class="muted">임무 종료</div>` : "");
     $("time3d").textContent = `${Flight3D.fmtTime(s.t)} / ${Flight3D.fmtTime(s.total)}`;
-    if (document.activeElement !== $("seek3d")) $("seek3d").value = s.total > 0 ? Math.round(s.t / s.total * 1000) : 0;
+    if (document.activeElement !== $("seek3d")) $("seek3d").value = s.total > 0 ? Math.round(Math.min(1, s.t / s.total) * 1000) : 0;
     if (s.done) updatePlayBtn();
+  }
+
+  /** 고장·충돌 상태 한 줄: 추락 중/추락, 비상 착륙 중/완료 + 원인 */
+  function failureLine(s) {
+    const F = s.failure;
+    if (!F) return "";
+    const head = s.phase === "ended" ? (F.mode === "crash" ? "✕ 추락" : "비상 착륙 완료")
+                                     : (F.mode === "crash" ? "⚠ 추락 중" : "⚠ 비상 착륙 중");
+    return `<div class="${F.mode === "crash" ? "danger" : "warn3d"}">${head} · ${F.label}${F.detail ? " · " + F.detail : ""} (${Flight3D.fmtTime(F.t)})</div>`;
+  }
+
+  /** 3D 경로 검사 결과를 판정 표에 '장애물(지형·건물)' 행으로 반영하고, 충돌이면 종합 판정을 불가로 */
+  function onScan3d(scan) {
+    const cb = $("checksBody");
+    if (!cb || !state.result) return;
+    cb.querySelectorAll("tr[data-key='obstacle']").forEach(tr => tr.remove());
+    const fails = scan.conflicts.filter(c => c.level === "fail"), warns = scan.conflicts.filter(c => c.level === "warn");
+    const status = fails.length ? "fail" : warns.length ? "warn" : "ok";
+    const first = fails[0] || warns[0];
+    const msg = first ? `${first.label} · ${first.segLabel} · ${first.detail}` : (scan.buildings ? "경로상 지형·건물 충돌 없음" : "지형만 검사(건물 자료 없음)");
+    const tr = document.createElement("tr");
+    tr.dataset.key = "obstacle";
+    tr.innerHTML = `<td><span class="dot ${status}"></span></td><td>장애물(지형·건물)</td><td>충돌 ${fails.length} · 근접 ${warns.length}</td><td class="muted">지면·건물 위 10 m</td><td class="st-${status}">${STATUS_KO[status]} · ${msg}</td>`;
+    cb.appendChild(tr);
+    if (fails.length) {
+      const badge = $("verdictBadge");
+      badge.textContent = "불가"; badge.className = "badge fail";
+      $("tagVerdict").textContent = "불가"; $("tagVerdict").className = "ph-tag crit";
+      const fr = $("failReasons");
+      if (fr && !fr.querySelector("li[data-key='obstacle']")) {
+        const li = document.createElement("li"); li.dataset.key = "obstacle";
+        li.innerHTML = `장애물 충돌 <b>3D 검사</b> · ${first.label} (${first.segLabel})`;
+        fr.prepend(li);
+      }
+    }
   }
 
   function setupView3D() {
@@ -837,6 +875,7 @@
       if (flight) flight.speed = currentSpeed();
     }));
     $("follow3d").addEventListener("change", () => { if (flight) flight.setFollow($("follow3d").checked); });
+    $("failSim").addEventListener("change", () => { if (flight) flight.setFailSim($("failSim").checked); });
     $("seek3d").addEventListener("input", () => {
       if (!flight || !flight.track) return;
       flight.pause(); updatePlayBtn();
