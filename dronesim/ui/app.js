@@ -618,6 +618,7 @@
     }
     if (!flight) {
       flight = new Flight3D($("map3d"));
+      window.__flight3d = flight;   // 진단용(개발자 도구·자동 점검에서 상태 확인)
       flight.onTick = onTick3d;
       flight.onFollowChange = f => { $("follow3d").checked = f; };
     }

@@ -181,7 +181,7 @@
               { id: "trail", type: "line", source: "trail", paint: { "line-color": ACCENT, "line-width": 3 } },
             ],
           },
-          center: [127.3845, 36.3504], zoom: 16, pitch: 60, bearing: 0, maxPitch: 90,
+          center: [127.3845, 36.3504], zoom: 16, pitch: 60, bearing: 0, maxPitch: 85,
           antialias: false, interactive: false, attributionControl: false,
           // 3D 뷰가 숨겨지면(display:none) MapLibre 의 자동 resize 가 0×0 으로 행렬을 계산하다 깨진다.
           // 자동 추적을 끄고 resizeCam() 에서 보일 때만 직접 resize 한다.
@@ -249,17 +249,31 @@
       const camElev = this._elevOn(cam, st.lat, st.lon);
       const ground = camElev != null ? camElev : (localElev != null ? localElev : 0);
       const absAlt = ground + Math.max(2, agl);
-      const fov = 78 / this.camZoom;
-      if (this._camFov !== fov) { this._camFov = fov; cam.setVerticalFieldOfView(fov); }
-      // MapLibre 에는 Mapbox 의 FreeCameraOptions 가 없다. 같은 역할의 "카메라 위치 + 방위·피치 → center/zoom" 변환을 쓴다.
+      // 시야각(세로)은 줌으로 조절하되, "피치 + 시야각/2" 가 지평선(90°)을 넘으면 MapLibre 의 지형 투영 행렬 계산이
+      // 실패해(jumpTo 예외) 카메라가 멈춘다. 화면 위쪽이 지평선 아래 약 6° 안쪽에 머물도록 둘을 함께 제한한다.
+      const HORIZON_MARGIN = 84;
+      const fov = Math.max(20, Math.min(60, 78 / this.camZoom));
       // 피치 0 = 수직 아래, 90 = 수평. 짐벌 -30° → 피치 60°.
-      const pitch = Math.max(0, Math.min(90, 90 + this.gimbalPitch));
+      const pitch = Math.max(0, Math.min(HORIZON_MARGIN - fov / 2, 90 + this.gimbalPitch));
+      if (this._camFov !== fov) { this._camFov = fov; cam.setVerticalFieldOfView(fov); }
       try {
-        const opts = cam.calculateCameraOptionsFromCameraLngLatAltRotation([st.lon, st.lat], absAlt, st.heading, pitch);
-        // 이륙·착륙 직후(지면 위 2 m)에 수직에 가깝게 내려다보면 줌이 극단적으로 커져 MapLibre 지형 렌더가 깨진다. 줌 20 으로 제한.
-        if (!isFinite(opts.zoom) || opts.zoom > 20) opts.zoom = 20;
-        cam.jumpTo(opts);
-      } catch (e) { /* 지형 타일 미로딩 등으로 계산이 실패하면 이 프레임은 건너뛴다 */ }
+        const o = cam.calculateCameraOptionsFromCameraLngLatAltRotation([st.lon, st.lat], absAlt, st.heading, pitch);
+        // 돌려받은 객체(elevation·roll 등 포함)를 그대로 jumpTo 에 넘기면 지형이 켜진 맵에서 투영 행렬 계산이 깨져
+        // 이후 모든 카메라 이동이 실패한다(WebView2 에서 재현). 필요한 값만 꺼내 단순 옵션으로 넘긴다.
+        const c = o.center;
+        const center = Array.isArray(c) ? c : [c.lng, c.lat];
+        // 이륙·착륙 직후(지면 위 2 m)에 수직에 가깝게 내려다보면 줌이 극단적으로 커져 지형 렌더가 깨진다. 줌 20 으로 제한.
+        const zoom = (!isFinite(o.zoom) || o.zoom > 20) ? 20 : o.zoom;
+        cam.jumpTo({ center, zoom, bearing: st.heading, pitch });
+        this._camErrors = 0;
+      } catch (e) {
+        // 실패한 프레임은 건너뛴다. 연속 실패하면 시야각을 다시 설정해 내부 행렬을 복구한다.
+        this._camErrors = (this._camErrors || 0) + 1;
+        if (this._camErrors % 10 === 0) {
+          console.warn("cam jumpTo 실패, 시야각 재설정으로 복구 시도:", e && e.message);
+          try { cam.setVerticalFieldOfView(36.87); cam.setVerticalFieldOfView(fov); } catch (_) { /* 무시 */ }
+        }
+      }
       this._drawHud();
     }
 
@@ -292,7 +306,7 @@
       ctx.stroke();
       ctx.beginPath(); ctx.arc(cx, cy, 3, 0, Math.PI * 2); ctx.stroke();
       // 피치 래더: -30~+30°, 10° 간격. ppd = (H/2) / tan(fov/2) * DEG
-      const fov = 78 / this.camZoom, DEG = Math.PI / 180;
+      const fov = this._camFov || Math.max(20, Math.min(60, 78 / this.camZoom)), DEG = Math.PI / 180;   // 실제 적용된 시야각과 맞춘다
       const ppd = (H / 2) / Math.tan(fov * DEG / 2) * DEG;
       ctx.strokeStyle = "rgba(255,255,255,.55)"; ctx.lineWidth = 1;
       ctx.font = "600 9px 'IBM Plex Mono', Consolas, monospace"; ctx.fillStyle = "rgba(255,255,255,.75)"; ctx.textBaseline = "middle";
