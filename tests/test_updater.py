@@ -154,3 +154,24 @@ def test_api_update_endpoints(monkeypatch, tmp_path):
     assert s["auto_update"] is True
     assert a.save_settings({"auto_update": False})["auto_update"] is False
     json.dumps(a.update_status())
+
+
+def test_launch_detached_strips_pyinstaller_env(monkeypatch):
+    monkeypatch.setenv("_PYI_ARCHIVE_FILE", r"C:\x\app.exe")
+    monkeypatch.setenv("_PYI_PARENT_PROCESS_LEVEL", "1")
+    monkeypatch.setenv("_PYI_APPLICATION_HOME_DIR", r"C:\stale\_MEI123")
+    monkeypatch.setenv("_MEIPASS2", r"C:\stale\_MEI123")
+    monkeypatch.setenv("KEEP_ME", "1")
+    captured = {}
+
+    class FakePopen:
+        def __init__(self, cmd, **kw):
+            captured["cmd"] = cmd
+            captured["env"] = kw.get("env")
+
+    monkeypatch.setattr(up.subprocess, "Popen", FakePopen)
+    up.launch_detached(["powershell.exe", "-File", "x.ps1"])
+    env = captured["env"]
+    assert env is not None and env.get("KEEP_ME") == "1"
+    assert not any(k.startswith(("_PYI_", "_MEIPASS")) for k in env)
+    assert "Env:" in up.APPLY_SCRIPT and "_PYI_*" in up.APPLY_SCRIPT   # 스크립트도 재실행 전 변수 제거

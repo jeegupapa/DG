@@ -243,6 +243,8 @@ try {
         $w = 0
         while ((Get-Process -Name "DroneMissionSim" -ErrorAction SilentlyContinue) -and $w -lt 30) { Start-Sleep -Milliseconds 500; $w++ }
         Start-Sleep -Seconds 2
+        # PyInstaller 자식 프로세스에서 물려받은 변수를 제거하지 않으면 새 인스턴스가 옛 임시 폴더를 찾다 죽는다
+        Get-ChildItem Env: | Where-Object { $_.Name -like "_PYI_*" -or $_.Name -like "_MEIPASS*" } | ForEach-Object { Remove-Item -Path ("Env:" + $_.Name) -ErrorAction SilentlyContinue }
         L "relaunching (waited $($w * 0.5)s for previous instances)"
         Start-Process -FilePath $Exe -WorkingDirectory (Split-Path -Parent $Exe)
     }
@@ -272,11 +274,25 @@ def apply_command(script: Path, mode: str, new_file: Path, exe: Path, pid: int, 
     return cmd
 
 
+PYI_ENV_PREFIXES = ("_PYI_", "_MEIPASS")
+
+
+def clean_env(env: dict[str, str] | None = None) -> dict[str, str]:
+    """PyInstaller 단일 실행파일의 자식 프로세스가 물려받는 변수(_PYI_*, _MEIPASS2)를 뺀 환경.
+
+    이 변수가 남은 채로 같은 exe 를 다시 실행하면 새 인스턴스가 자기 압축을 풀지 않고 이전 인스턴스의
+    (이미 삭제된) 임시 폴더에서 python DLL 을 찾아 'Failed to load Python DLL' 로 죽는다.
+    """
+    src = os.environ if env is None else env
+    return {k: v for k, v in src.items() if not k.upper().startswith(PYI_ENV_PREFIXES)}
+
+
 def launch_detached(cmd: list[str]) -> None:
     """부모(앱)가 종료되어도 계속 도는 숨은 PowerShell 을 띄운다.
 
     DETACHED_PROCESS 는 콘솔을 아예 만들지 않아 powershell.exe 가 바로 종료되므로 쓰지 않는다.
     CREATE_NO_WINDOW 는 콘솔을 만들되 창을 보이지 않게 하고, 새 프로세스 그룹으로 분리한다.
+    환경은 clean_env() 로 넘겨 재실행되는 앱이 PyInstaller 변수를 물려받지 않게 한다.
     """
     flags = 0
     startupinfo = None
@@ -285,7 +301,7 @@ def launch_detached(cmd: list[str]) -> None:
         startupinfo = subprocess.STARTUPINFO()                                     # type: ignore[attr-defined]
         startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW                     # type: ignore[attr-defined]
         startupinfo.wShowWindow = 0                                                # SW_HIDE
-    subprocess.Popen(cmd, creationflags=flags, startupinfo=startupinfo, close_fds=True,
+    subprocess.Popen(cmd, creationflags=flags, startupinfo=startupinfo, close_fds=True, env=clean_env(),
                      stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
