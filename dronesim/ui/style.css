@@ -369,3 +369,23 @@ td.st-ok, td.st-info { font-family: var(--sans); }
   border-radius: var(--r); padding: 8px 10px; font-size: 11px;
 }
 .banner span { flex: 1 1 100%; }
+
+/* ---------- 기체 제안(사이징) 탭 ---------- */
+.szwarn { border: 1px solid rgba(184, 121, 26, .35); background: rgba(184, 121, 26, .08); color: var(--warn); border-radius: 6px; padding: 6px 9px; font-size: 11px; margin-bottom: 8px; line-height: 1.45; }
+.szwarn.crit { border-color: rgba(192, 57, 43, .35); background: rgba(192, 57, 43, .07); color: var(--crit); }
+.szwarn div + div { margin-top: 3px; }
+.szblock { border: 1px solid var(--line); border-radius: 6px; padding: 6px 9px; background: var(--panel-2); font-size: 11px; line-height: 1.5; }
+.szblock .n { font-weight: 600; }
+.szblock .why { color: var(--sub); font-size: 10.5px; }
+.szblock .row + .row { border-top: 1px solid var(--line-2); margin-top: 4px; padding-top: 4px; }
+.sz-ok { color: var(--ok); font-weight: 600; }
+.sz-no { color: var(--sub); }
+.sz-na { color: var(--faint); }
+.st-warn-i { color: var(--warn); font-weight: 600; }
+.szdetails { margin-top: 10px; }
+.szdetails summary { cursor: pointer; list-style: none; user-select: none; }
+.szdetails summary::-webkit-details-marker { display: none; }
+.szdetails summary::before { content: "▸ "; }
+.szdetails[open] summary::before { content: "▾ "; }
+.reasons.small li { font-size: 10.5px; color: var(--sub); }
+table.grid td.szspec { font-family: var(--mono); font-variant-numeric: tabular-nums; }

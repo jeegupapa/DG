@@ -26,6 +26,8 @@ class MissionInput:
     night_approved: bool = False   # 야간 특별비행승인 보유
     gps_risk: bool = False         # GPS 취약 지역(도심 고층, 전파 교란 우려)
     name: str = "임무"
+    target_cruise_ms: float | None = None   # 기체 제안용 목표 순항 속도(None 이면 프로필 순항속도)
+    motor_count: int = 4                    # 기체 제안용 모터 수 (4/6/8)
 
     @staticmethod
     def from_dict(d: dict[str, Any]) -> "MissionInput":
@@ -44,6 +46,8 @@ class MissionInput:
             night_approved=bool(d.get("night_approved", False)),
             gps_risk=bool(d.get("gps_risk", False)),
             name=str(d.get("name", "임무")),
+            target_cruise_ms=float(d["target_cruise_ms"]) if d.get("target_cruise_ms") not in (None, "", 0, "0") else None,
+            motor_count=int(d.get("motor_count", 4) or 4),
         )
 
     def to_dict(self) -> dict[str, Any]:

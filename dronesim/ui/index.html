@@ -66,6 +66,13 @@
           <label>페이로드 (kg) <input id="payload" type="number" min="0" step="0.1" value="0"></label>
           <label>기본 고도 (m) <input id="defaultAlt" type="number" min="5" max="500" step="5" value="50"></label>
         </div>
+        <div class="row2">
+          <label title="기체 제안(사이징)에 쓰는 목표 순항 속도. 기본값은 선택한 프로필의 순항속도">목표 순항 속도 (m/s)
+            <input id="cruiseSpeed" type="number" min="1" max="30" step="0.5" value="8"></label>
+          <label title="기체 제안(사이징)에 쓰는 멀티콥터 모터 수">모터 수 (기체 제안)
+            <select id="motors"><option value="4">4 (쿼드)</option><option value="6">6 (헥사)</option><option value="8">8 (옥토)</option></select>
+          </label>
+        </div>
         <div class="checks">
           <label><input id="rth" type="checkbox" checked> 임무 후 출발지 복귀</label>
           <label><input id="vlos" type="checkbox" checked> 가시권 운용</label>
@@ -229,6 +236,7 @@
           <button data-tab="segments">구간</button>
           <button data-tab="weather">기상</button>
           <button data-tab="hardware">하드웨어</button>
+          <button data-tab="sizing">기체 제안</button>
         </nav>
 
         <section id="tab-checks" class="tab active">
@@ -275,6 +283,30 @@
             <div class="ph-r"><span id="tagHardware" class="ph-tag"></span></div>
           </div>
           <div id="hwList"></div>
+        </section>
+
+        <section id="tab-sizing" class="tab">
+          <div class="ph">
+            <div class="ph-l"><span class="ph-t">기체 제안</span><span class="ph-c">sizing</span><span id="szNote" class="ph-n"></span></div>
+            <div class="ph-r"><span id="tagSizing" class="ph-tag"></span></div>
+          </div>
+          <div id="szWarn" class="szwarn hidden"></div>
+          <div id="szKpi" class="wx"></div>
+          <table class="grid">
+            <thead><tr><th>품목</th><th>사양</th><th>비고</th></tr></thead>
+            <tbody id="szBody"></tbody>
+          </table>
+          <h3>기존 프로필 적합성 <span class="faint">(profiles.json)</span></h3>
+          <div id="szProfile" class="szblock"></div>
+          <h3>민감도 <span class="faint">(한 단계 작은 급 가능 여부)</span></h3>
+          <ul id="szSens" class="reasons"></ul>
+          <h3>국내 규정 참고 <span class="faint">(참고용)</span></h3>
+          <ul id="szReg" class="reasons"></ul>
+          <p id="szRegNote" class="muted small"></p>
+          <details class="szdetails">
+            <summary class="sect">계산 가정 · 단위</summary>
+            <ul id="szAssume" class="reasons small"></ul>
+          </details>
         </section>
       </div>
     </section>

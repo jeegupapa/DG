@@ -128,6 +128,8 @@
       vlos: $("vlos").checked,
       night_approved: $("nightApproved").checked,
       gps_risk: $("gpsRisk").checked,
+      target_cruise_ms: Number($("cruiseSpeed").value) || null,
+      motor_count: Number($("motors").value) || 4,
       waypoints: state.waypoints.map(w => ({ lat: w.lat, lon: w.lon, alt_m: w.alt_m, hover_s: w.hover_s })),
     };
   }
@@ -143,6 +145,8 @@
     $("vlos").checked = m.vlos !== false;
     $("nightApproved").checked = !!m.night_approved;
     $("gpsRisk").checked = !!m.gps_risk;
+    $("cruiseSpeed").value = m.target_cruise_ms || profileCruise() || 8;
+    $("motors").value = String([4, 6, 8].includes(Number(m.motor_count)) ? m.motor_count : 4);
     state.waypoints = (m.waypoints || []).map(w => ({ lat: w.lat, lon: w.lon, alt_m: w.alt_m ?? 50, hover_s: w.hover_s ?? 0 }));
     redraw();
     if (state.waypoints.length) map.fitBounds(routeLine.getBounds().pad(0.3));
@@ -150,6 +154,15 @@
     updateTopbar();
   }
 
+  function profileCruise() {
+    const p = state.profiles.find(x => x.id === $("profile").value);
+    return p ? p.cruise_speed_ms : null;
+  }
+  /** 프로필을 바꾸면 목표 순항 속도 기본값을 그 프로필의 순항속도로 맞춘다 */
+  function syncCruiseDefault() {
+    const v = profileCruise();
+    if (v) $("cruiseSpeed").value = v;
+  }
   function updateProfileInfo() {
     const p = state.profiles.find(x => x.id === $("profile").value);
     if (!p) return;
@@ -341,7 +354,63 @@
     $("tagHardware").textContent = `${r.hardware.length} 품목`;
     $("tagHardware").className = "ph-tag";
 
+    renderSizing(r.sizing);
     drawLines();
+  }
+
+  // ───────────────────────── 기체 제안(사이징) 탭
+  const esc = v => String(v ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  function renderSizing(sz) {
+    const warn = $("szWarn"), kpi = $("szKpi"), body = $("szBody");
+    warn.className = "szwarn hidden"; kpi.innerHTML = ""; body.innerHTML = "";
+    $("szProfile").innerHTML = ""; $("szSens").innerHTML = ""; $("szReg").innerHTML = ""; $("szAssume").innerHTML = ""; $("szRegNote").textContent = "";
+    if (!sz || sz.error) {
+      $("tagSizing").textContent = "계산 불가"; $("tagSizing").className = "ph-tag crit";
+      $("szNote").textContent = "";
+      warn.className = "szwarn crit"; warn.textContent = sz && sz.error ? sz.error : "기체 제안 결과가 없습니다.";
+      return;
+    }
+    const s = sz.summary, inp = sz.inputs;
+    const feasible = s.feasible !== false;
+    const toneCls = !feasible ? "crit" : (sz.warnings && sz.warnings.length) ? "warn" : "ok";
+    $("tagSizing").textContent = feasible ? `${s.frame_label} · ${s.motors}모터 · ${s.cells}S` : "실현 어려움";
+    $("tagSizing").className = "ph-tag " + toneCls;
+    $("szNote").textContent = s.custom ? "맞춤 사양" : `추천 프로필: ${s.recommended_profile_name}`;
+    if (sz.warnings && sz.warnings.length) {
+      warn.className = "szwarn" + (feasible ? "" : " crit");
+      warn.innerHTML = sz.warnings.map(w => `<div>⚠ ${esc(w)}</div>`).join("");
+    }
+    kpi.innerHTML = [
+      ["예상 이륙중량", `${s.mtow_kg.toFixed(2)} kg`],
+      ["추력비 (최대추력/중량)", `${s.thrust_ratio.toFixed(2)}`],
+      ["호버 체공 (예비 제외)", `${s.hover_endurance_min.toFixed(1)} 분`],
+      ["임무 소요 / 에너지", `${fmt.mmss(s.mission_time_s)} · ${Math.round(s.mission_energy_wh)} Wh`],
+      ["호버 / 순항 전력", `${s.hover_power_w} / ${s.cruise_power_w} W`],
+      ["필요 배터리", `${Math.round(s.required_wh)} Wh (${s.cells}S ${s.pack_mah.toLocaleString()} mAh × ${s.packs})`],
+    ].map(([k, v]) => `<div class="kpi"><span class="k">${k}</span><span class="v" title="${esc(v)}">${esc(v)}</span></div>`).join("");
+    const rows = [
+      ["조건", `${fmt.m(inp.total_distance_m)} · 고도 ${Math.round(inp.alt_m)} m · ${inp.cruise_speed_ms} m/s · 페이로드 ${inp.payload_kg} kg`,
+        `풍속 ${fmt.n1(inp.wind_ms)} m/s · 기온 ${fmt.n1(inp.temp_c)} °C · 예비 ${Math.round(inp.reserve_fraction * 100)}% · 체공 ${Math.round(inp.hover_time_s)} s`],
+      ...sz.components.map(c => [c.item, c.spec, c.note]),
+      ["예상 이륙중량", `${s.mtow_kg.toFixed(2)} kg (기체 ${s.dry_kg.toFixed(2)} + 배터리 ${s.battery_kg.toFixed(2)})`, `추력비 ${s.thrust_ratio.toFixed(2)} · 모터당 요구 ${s.thrust_req_per_motor_g} / 최대 ${s.thrust_max_per_motor_g} gf`],
+      ["체공시간", `호버 ${s.hover_endurance_min.toFixed(1)} 분 (가용 ${Math.round(s.usable_wh)} Wh)`, `임무 ${fmt.s(s.mission_time_s)} · ${Math.round(s.mission_energy_wh)} Wh 소요`],
+      ["추천", s.custom ? "맞춤 사양 (조건을 만족하는 기존 프로필 없음)" : `${s.recommended_profile_name} (${s.recommended_profile_id})`, s.custom ? "" : "기존 프로필로 임무 가능"],
+    ];
+    body.innerHTML = rows.map(([a, b, c]) => `<tr><td>${esc(a)}</td><td class="szspec">${esc(b)}</td><td class="muted">${esc(c)}</td></tr>`).join("");
+    $("szProfile").innerHTML = (sz.profile_checks || []).map(p =>
+      `<div class="row"><span class="n">${esc(p.name)}</span> <span class="${p.ok ? "sz-ok" : "sz-no"}">${p.ok ? "가능" : "부적합"}</span>` +
+      ` <span class="why">· 필요 ${Math.round(p.energy_wh)} / 가용 ${Math.round(p.usable_wh)} Wh${p.ok ? "" : " · " + p.reasons.map(esc).join(", ")}</span></div>`).join("")
+      || "<span class='muted'>프로필 정보 없음</span>";
+    $("szSens").innerHTML = (sz.sensitivity || []).map(x => {
+      if (!x.applicable) return `<li>${esc(x.label)}: <span class="sz-na">${esc(x.note)}</span></li>`;
+      const verdict = x.one_step_smaller ? `<span class="sz-ok">한 단계 작은 급 가능</span>` : x.larger ? `<span class="st-warn-i">더 큰 급 필요</span>` : `<span class="sz-no">같은 급 유지</span>`;
+      return `<li>${esc(x.label)} → ${x.frame_class}급 · ${x.motor_class} · ${x.cells}S ${x.pack_mah.toLocaleString()} mAh × ${x.packs} · 이륙중량 ${x.mtow_kg.toFixed(2)} kg (${x.mtow_delta_kg >= 0 ? "+" : ""}${x.mtow_delta_kg.toFixed(2)}) · ${verdict}</li>`;
+    }).join("");
+    $("szReg").innerHTML = (sz.regulations || []).map(g =>
+      `<li><span class="${g.applies ? "sz-ok" : "sz-na"}">${g.applies ? "해당" : "해당 없음"}</span> · ${esc(g.condition)}: ${esc(g.text)}</li>`).join("");
+    $("szRegNote").textContent = sz.regulation_note || "";
+    const units = sz.units ? Object.entries(sz.units).map(([k, v]) => `${k}=${v}`).join(", ") : "";
+    $("szAssume").innerHTML = (sz.assumptions || []).map(a => `<li>${esc(a)}</li>`).join("") + (units ? `<li>단위: ${esc(units)}</li>` : "");
   }
 
   const TRIGGER_KO = {
@@ -383,6 +452,21 @@
     if (r.weather.note) L.push(`  (${r.weather.note})`);
     L.push(``, `[필요 하드웨어]`);
     r.hardware.forEach(h => L.push(`  [${h.category}] ${h.name}${h.spec ? " (" + h.spec + ")" : ""} - ${h.reason}`));
+    const sz = r.sizing;
+    if (sz && !sz.error) {
+      const s = sz.summary, inp = sz.inputs;
+      L.push(``, `[기체 제안] ${s.feasible === false ? "실현 어려움" : s.frame_label + " · " + s.motors + "모터 · " + s.cells + "S"} · ${s.custom ? "맞춤 사양" : "추천 프로필 " + s.recommended_profile_name}`);
+      L.push(`  조건: ${fmt.m(inp.total_distance_m)} · 고도 ${Math.round(inp.alt_m)} m · 순항 ${inp.cruise_speed_ms} m/s · 페이로드 ${inp.payload_kg} kg · 풍속 ${fmt.n1(inp.wind_ms)} m/s · 기온 ${fmt.n1(inp.temp_c)} °C · 예비 ${Math.round(inp.reserve_fraction * 100)}%`);
+      sz.components.forEach(c => L.push(`  ${c.item}: ${c.spec}${c.note ? " - " + c.note : ""}`));
+      L.push(`  예상 이륙중량 ${s.mtow_kg.toFixed(2)} kg · 추력비 ${s.thrust_ratio.toFixed(2)} · 호버 체공 ${s.hover_endurance_min.toFixed(1)}분 · 임무 ${fmt.s(s.mission_time_s)} / ${Math.round(s.mission_energy_wh)} Wh · 호버 ${s.hover_power_w} W, 순항 ${s.cruise_power_w} W`);
+      (sz.sensitivity || []).forEach(x => L.push(`  민감도 ${x.label}: ` + (x.applicable ? `${x.frame_class}급 · ${x.motor_class} · ${x.cells}S ${x.pack_mah} mAh × ${x.packs} · ${x.mtow_kg.toFixed(2)} kg → ${x.one_step_smaller ? "한 단계 작은 급 가능" : x.larger ? "더 큰 급 필요" : "같은 급 유지"}` : x.note)));
+      (sz.regulations || []).forEach(g => L.push(`  규정(참고) ${g.applies ? "해당" : "해당 없음"} · ${g.condition}: ${g.text}`));
+      L.push(`  ${sz.regulation_note}`);
+      (sz.warnings || []).forEach(w => L.push(`  ⚠ ${w}`));
+      L.push(`  가정: ${sz.assumptions.join(" / ")}`);
+    } else if (sz && sz.error) {
+      L.push(``, `[기체 제안] 계산 불가: ${sz.error}`);
+    }
     L.push(``, `※ 기상은 ${sourceLabel(r)} 자료 기반 추정이며 국지 바람·공역 승인 여부는 별도 확인이 필요합니다.`);
     return L.join("\n");
   }
@@ -501,8 +585,9 @@
     state.profiles = await state.api.get_profiles();
     const sel = $("profile");
     sel.innerHTML = state.profiles.map(p => `<option value="${p.id}">${p.name}</option>`).join("");
-    sel.addEventListener("change", updateProfileInfo);
+    sel.addEventListener("change", () => { updateProfileInfo(); syncCruiseDefault(); });
     updateProfileInfo();
+    syncCruiseDefault();
 
     $("btnRun").addEventListener("click", runSimulation);
     $("btnClear").addEventListener("click", () => { state.waypoints = []; redraw(); });

@@ -8,7 +8,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
-from . import __version__, config
+from . import __version__, config, sizing
 from .export import mission_planner_waypoints, qgc_plan_text
 from .models import MissionInput
 from .simulate import evaluate, load_profiles
@@ -119,16 +119,59 @@ class Api:
                 home.lat, home.lon, m.date, source,
                 open_meteo_fetch=lambda la, lo, d: fetch_weather(la, lo, d))
             result = evaluate(m, profile, weather, n_runs=int(n_runs))
-            result["weather_source"] = {
-                "requested": source,
-                "used": weather.source,
-                "label": SOURCE_LABELS.get(weather.source, weather.source),
-                "note": weather.note,
-            }
+            result["weather_source"] = self._weather_source_info(source, weather)
+            try:
+                result["sizing"] = sizing.propose_for_mission(m, profile, weather, profiles=self._profiles)
+            except Exception as e:  # 사이징 실패가 시뮬레이션 결과를 막지 않도록
+                result["sizing"] = {"error": f"{type(e).__name__}: {e}"}
             return result
         except WeatherError as e:
             return {"error": str(e)}
         except Exception as e:  # 화면에 원인 표시
+            return {"error": f"{type(e).__name__}: {e}", "trace": traceback.format_exc()}
+
+    @staticmethod
+    def _weather_source_info(requested: str, weather) -> dict[str, Any]:
+        return {
+            "requested": requested,
+            "used": weather.source,
+            "label": SOURCE_LABELS.get(weather.source, weather.source),
+            "note": weather.note,
+        }
+
+    def propose_hardware(self, mission: dict[str, Any], options: dict[str, Any] | None = None) -> dict[str, Any]:
+        """임무 조건에서 멀티콥터 하드웨어 사양을 역산해 제안한다(몬테카를로 없이).
+
+        options: cruise_speed_ms(기본 임무의 target_cruise_ms 또는 프로필 순항속도), motors(4/6/8),
+                 weather_source("auto"|"kma"|"open-meteo").
+        """
+        options = options or {}
+        try:
+            m = MissionInput.from_dict(mission)
+            if not m.waypoints:
+                return {"error": "지도에서 웨이포인트를 1개 이상 입력하세요."}
+            profile = self._profiles.get(m.profile_id)
+            if profile is None:
+                return {"error": f"알 수 없는 기체 프로필: {m.profile_id}"}
+            source = normalize_source(options.get("weather_source") or config.get_default_weather_source())
+            home = m.waypoints[0]
+            weather = fetch_weather_by_source(
+                home.lat, home.lon, m.date, source,
+                open_meteo_fetch=lambda la, lo, d: fetch_weather(la, lo, d))
+            cruise = options.get("cruise_speed_ms")
+            motors = options.get("motors")
+            res = sizing.propose_for_mission(
+                m, profile, weather, profiles=self._profiles,
+                cruise_speed_ms=float(cruise) if cruise else None,
+                motors=int(motors) if motors else None)
+            res["weather_source"] = self._weather_source_info(source, weather)
+            res["profile_id"] = profile.id
+            return res
+        except WeatherError as e:
+            return {"error": str(e)}
+        except ValueError as e:
+            return {"error": str(e)}
+        except Exception as e:
             return {"error": f"{type(e).__name__}: {e}", "trace": traceback.format_exc()}
 
     # ------------------------------------------------------------ 파일

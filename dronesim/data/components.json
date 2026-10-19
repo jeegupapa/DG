@@ -1,0 +1,34 @@
+{
+  "_comment": "멀티콥터 사이징용 대표 부품 표. 값은 시판 부품 카탈로그의 대표치를 반올림한 것으로 ±20~30% 오차를 가정한다. thrust_max_g: 권장 프롭·전압에서 모터 1개 최대 추력(gf). weight_g: 모터 자중. esc_weight_g/prop_weight_g: 모터 1개당 ESC·프롭 중량. max_current_a: 최대 전류(ESC 선정에 1.3배 여유). cells: 권장 LiPo 셀 수. cda_m2: 프레임(착륙장치·전장 포함)의 등가 평판 면적(유해항력 = ½ρv²·CdA), payload_cda_m2_per_kg: 페이로드 1 kg 당 추가 면적.",
+  "motors": [
+    {"class": "2212", "kv_range": [ 920, 1400 ], "thrust_max_g": 900, "weight_g": 55, "esc_weight_g": 25, "prop_weight_g": 12, "prop_in": 10, "prop_range_in": [ 9, 10 ], "cells": 4, "max_current_a": 20},
+    {"class": "2814", "kv_range": [ 700, 900 ], "thrust_max_g": 1700, "weight_g": 110, "esc_weight_g": 35, "prop_weight_g": 18, "prop_in": 12, "prop_range_in": [ 11, 13 ], "cells": 4, "max_current_a": 30},
+    {"class": "3508", "kv_range": [ 380, 700 ], "thrust_max_g": 2500, "weight_g": 150, "esc_weight_g": 40, "prop_weight_g": 25, "prop_in": 15, "prop_range_in": [ 13, 15 ], "cells": 6, "max_current_a": 35},
+    {"class": "4114", "kv_range": [ 320, 400 ], "thrust_max_g": 3500, "weight_g": 190, "esc_weight_g": 45, "prop_weight_g": 30, "prop_in": 17, "prop_range_in": [ 15, 17 ], "cells": 6, "max_current_a": 40},
+    {"class": "5008", "kv_range": [ 170, 400 ], "thrust_max_g": 5000, "weight_g": 230, "esc_weight_g": 60, "prop_weight_g": 40, "prop_in": 18, "prop_range_in": [ 17, 20 ], "cells": 12, "max_current_a": 45},
+    {"class": "6215", "kv_range": [ 170, 340 ], "thrust_max_g": 8000, "weight_g": 440, "esc_weight_g": 90, "prop_weight_g": 60, "prop_in": 22, "prop_range_in": [ 20, 24 ], "cells": 12, "max_current_a": 60}
+  ],
+  "frames": [
+    {"class": "450", "weight_kg": 0.45, "max_prop_in": 10, "label": "450급", "cda_m2": 0.05},
+    {"class": "550", "weight_kg": 0.7, "max_prop_in": 13, "label": "550급", "cda_m2": 0.065},
+    {"class": "650", "weight_kg": 1.0, "max_prop_in": 15, "label": "650급", "cda_m2": 0.08},
+    {"class": "800", "weight_kg": 1.6, "max_prop_in": 18, "label": "800급", "cda_m2": 0.11},
+    {"class": "1000", "weight_kg": 2.5, "max_prop_in": 24, "label": "1000급", "cda_m2": 0.16}
+  ],
+  "esc_standard_a": [
+    20,
+    30,
+    40,
+    50,
+    60,
+    80,
+    100,
+    120
+  ],
+  "electronics_kg": 0.3,
+  "avionics_power_w": 20.0,
+  "battery_wh_per_kg": 160.0,
+  "max_pack_mah": 22000,
+  "min_pack_mah": 1500,
+  "payload_cda_m2_per_kg": 0.01
+}
